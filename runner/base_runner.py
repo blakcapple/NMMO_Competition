@@ -124,12 +124,23 @@ class Runner(object):
         self.buffer.after_update()
         return train_infos
 
-    def save(self):
+    def save(self, epoch, save_best=False):
         """Save policy's actor and critic networks."""
-        policy_actor = self.trainer.policy.actor
-        torch.save(policy_actor.state_dict(), str(self.save_dir) + "/actor.pt")
-        policy_critic = self.trainer.policy.critic
-        torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic.pt")
+        if save_best:
+            # remove last best model
+            files = os.listdir(self.save_dir)
+            for file in files:
+                if 'best' in file:
+                    os.remove(file)
+            policy_actor = self.trainer.policy.actor
+            torch.save(policy_actor.state_dict(), str(self.save_dir) + f"/actor_{epoch}_best.pt")
+            policy_critic = self.trainer.policy.critic
+            torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic_{epoch}_best.pt")
+        else:
+            policy_actor = self.trainer.policy.actor
+            torch.save(policy_actor.state_dict(), str(self.save_dir) + f"/actor_{epoch}.pt")
+            policy_critic = self.trainer.policy.critic
+            torch.save(policy_critic.state_dict(), str(self.save_dir) + f"/actor_{epoch}.pt")
 
     def restore(self):
         """Restore policy's networks from a saved model."""

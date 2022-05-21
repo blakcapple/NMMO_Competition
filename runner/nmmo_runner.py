@@ -1,3 +1,4 @@
+from distutils.log import info
 import time
 import wandb
 import numpy as np
@@ -18,7 +19,7 @@ class NMMORunner(Runner):
 
         start = time.time()
         episodes = int(self.num_env_steps) // self.episode_length // self.n_rollout_threads
-
+        best_reward = []
         for episode in range(episodes):
             if self.use_linear_lr_decay:
                 self.trainer.policy.lr_decay(episode, episodes)
@@ -45,7 +46,7 @@ class NMMORunner(Runner):
             total_num_steps = (episode + 1) * self.episode_length * self.n_rollout_threads           
             # save model
             if (episode % self.save_interval == 0 or episode == episodes - 1):
-                self.save()
+                self.save(episode)
 
             # log information
             if episode % self.log_interval == 0:
@@ -63,8 +64,10 @@ class NMMORunner(Runner):
 
             # eval
             if episode % self.eval_interval == 0 and self.use_eval:
-                self.eval(total_num_steps)
-
+                eval_reward = self.eval(total_num_steps)
+                if best_reward < eval_reward:
+                    best_reward =  eval_reward
+                    self.save(episode, save_best=True)
     def warmup(self):
         # reset env
         obs, share_obs, available_actions = self.envs.reset()
@@ -136,7 +139,7 @@ class NMMORunner(Runner):
         eval_episode_rewards = []
         one_episode_rewards = []
         eval_episode_steps = []
-        one_episode_step = np.zeros(self.n_eval_rollout_threads)
+        one_episode_steps = np.zeros(self.n_eval_rollout_threads)
 
         eval_obs, eval_share_obs, eval_available_actions = self.eval_envs.reset()
 
@@ -164,13 +167,13 @@ class NMMORunner(Runner):
 
             eval_masks = np.ones((self.all_args.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
             eval_masks[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, 1), dtype=np.float32)
-            one_episode_step += 1
+            one_episode_steps += 1
             for eval_i in range(self.n_eval_rollout_threads):
                 if eval_dones_env[eval_i]:
                     eval_episode += 1
                     eval_episode_rewards.append(np.sum(one_episode_rewards, axis=0)) # 沿着时间轴叠加奖励
-                    eval_episode_steps.append(one_episode_step[eval_i])
-                    one_episode_step[eval_i] = 0
+                    eval_episode_steps.append(one_episode_steps[eval_i])
+                    one_episode_steps[eval_i] = 0
                     one_episode_rewards = []
 
             if eval_episode >= self.all_args.eval_episodes:
@@ -181,3 +184,4 @@ class NMMORunner(Runner):
                               
                 self.log_env(eval_env_infos, total_num_steps)
                 break
+        return np.mean(eval_episode_rewards)
