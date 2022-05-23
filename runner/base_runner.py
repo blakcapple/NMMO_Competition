@@ -49,6 +49,8 @@ class Runner(object):
 
         # dir
         self.model_dir = self.all_args.model_dir
+        self.load_actor = self.all_args.load_actor
+        self.load_critic = self.all_args.load_critic
 
         if self.use_wandb:
             self.save_dir = str(wandb.run.dir)
@@ -75,8 +77,7 @@ class Runner(object):
                             self.envs.action_space,
                             device = self.device)
 
-        if self.model_dir is not None:
-            self.restore()
+        self.restore(self.load_actor, self.load_critic)
 
         # algorithm
         self.trainer = TrainAlgo(self.all_args, self.policy, device = self.device)
@@ -140,16 +141,19 @@ class Runner(object):
             policy_actor = self.trainer.policy.actor
             torch.save(policy_actor.state_dict(), str(self.save_dir) + f"/actor_{epoch}.pt")
             policy_critic = self.trainer.policy.critic
-            torch.save(policy_critic.state_dict(), str(self.save_dir) + f"/actor_{epoch}.pt")
+            torch.save(policy_critic.state_dict(), str(self.save_dir) + f"/critic_{epoch}.pt")
 
-    def restore(self):
+    def restore(self, load_actor, load_critic):
         """Restore policy's networks from a saved model."""
-        policy_actor_state_dict = torch.load(str(self.model_dir) + '/actor.pt')
-        self.policy.actor.load_state_dict(policy_actor_state_dict)
-        if not self.all_args.use_render:
-            policy_critic_state_dict = torch.load(str(self.model_dir) + '/critic.pt')
+        from pathlib import Path
+        model_dir = Path(os.path.dirname(__file__)).resolve().parent / 'load_model'
+        if load_actor:
+            policy_actor_state_dict = torch.load(str(model_dir) + '/actor.pt')
+            self.policy.actor.load_state_dict(policy_actor_state_dict)
+        if load_critic:
+            policy_critic_state_dict = torch.load(str(model_dir)+'/critic.pt')
             self.policy.critic.load_state_dict(policy_critic_state_dict)
- 
+
     def log_train(self, train_infos, total_num_steps):
         """
         Log training info.

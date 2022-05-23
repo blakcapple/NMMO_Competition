@@ -14,14 +14,14 @@ import socket
 import numpy as np 
 
 def parse_args(args, parser):
-
+    parser.add_argument('load_actor', default=False, action='store_true')
+    parser.add_argument('load_critic', default=False, action='store_true')
     all_args = parser.parse_known_args(args)[0]
-
     return all_args
 
 def create_env():
     cfg = CompetitionConfig()
-    # cfg.NMAPS = 400
+    cfg.NMAPS = 400
     return TrainWrapper(TeamBasedEnv(config=cfg))
 
 # make vec_env 
@@ -91,7 +91,6 @@ def main(args):
                          name=str('mappo') + "_" +
                               str(all_args.experiment_name) +
                               "_seed" + str(all_args.seed),
-                         group=all_args.map_name,
                          dir=str(run_dir),
                          job_type="training",
                          reinit=True)

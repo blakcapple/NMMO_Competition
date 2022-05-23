@@ -19,7 +19,7 @@ class NMMORunner(Runner):
 
         start = time.time()
         episodes = int(self.num_env_steps) // self.episode_length // self.n_rollout_threads
-        best_reward = []
+        best_reward = 0
         for episode in range(episodes):
             if self.use_linear_lr_decay:
                 self.trainer.policy.lr_decay(episode, episodes)
@@ -185,3 +185,52 @@ class NMMORunner(Runner):
                 self.log_env(eval_env_infos, total_num_steps)
                 break
         return np.mean(eval_episode_rewards)
+
+    def evaluate_model(self):
+    
+        eval_episode = 0
+
+        eval_episode_rewards = []
+        one_episode_rewards = [[]*(self.n_eval_rollout_threads)]
+        eval_episode_steps = []
+        one_episode_steps = np.zeros(self.n_eval_rollout_threads)
+
+        eval_obs, eval_share_obs, eval_available_actions = self.eval_envs.reset()
+
+        eval_rnn_states = np.zeros((self.n_eval_rollout_threads, self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
+        eval_masks = np.ones((self.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
+
+        while True:
+            self.trainer.prep_rollout()
+            eval_actions, eval_rnn_states = \
+                self.trainer.policy.act(np.concatenate(eval_obs),
+                                        np.concatenate(eval_rnn_states),
+                                        np.concatenate(eval_masks),
+                                        np.concatenate(eval_available_actions),
+                                        deterministic=True)
+            eval_actions = np.array(np.split(_t2n(eval_actions), self.n_eval_rollout_threads))
+            eval_rnn_states = np.array(np.split(_t2n(eval_rnn_states), self.n_eval_rollout_threads))
+            
+            # Obser reward and next obs
+            eval_obs, eval_share_obs, eval_rewards, eval_dones, eval_infos, eval_available_actions = self.eval_envs.step(eval_actions)
+            for i in range(self.n_eval_rollout_threads):
+                one_episode_rewards[i].append(eval_rewards[i])
+
+            eval_dones_env = np.all(eval_dones, axis=1)
+
+            eval_rnn_states[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
+
+            eval_masks = np.ones((self.all_args.n_eval_rollout_threads, self.num_agents, 1), dtype=np.float32)
+            eval_masks[eval_dones_env == True] = np.zeros(((eval_dones_env == True).sum(), self.num_agents, 1), dtype=np.float32)
+            one_episode_steps += 1
+            for eval_i in range(self.n_eval_rollout_threads):
+                if eval_dones_env[eval_i]:
+                    eval_episode += 1
+                    eval_episode_rewards.append(np.sum(one_episode_rewards[i], axis=0)) # 沿着时间轴叠加奖励
+                    eval_episode_steps.append(one_episode_steps[eval_i])
+                    one_episode_steps[eval_i] = 0
+                    one_episode_rewards[i] = []
+            if eval_episode > self.all_args.eval_episodes:
+                break 
+        print('eval_episode_rewards:', np.mean(eval_episode_rewards))
+        print('eval_episode_steps:', np.mean(eval_episode_steps))

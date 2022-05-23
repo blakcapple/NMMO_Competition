@@ -285,3 +285,4 @@ def get_config():
     parser.add_argument("--model_dir", type=str, default=None, help="by default None. set the path to pretrained model.")
 
     return parser
+    

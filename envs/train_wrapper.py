@@ -86,7 +86,7 @@ class RewardParser:
 class TrainWrapper(Wrapper):
     max_step = 1024
     TT_ID = 0  # training team index
-    use_auxiliary_script = True
+    use_auxiliary_script = False
 
     def __init__(self, env: TeamBasedEnv) -> None:
         super().__init__(env)
