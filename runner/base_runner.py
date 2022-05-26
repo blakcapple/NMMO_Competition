@@ -132,7 +132,8 @@ class Runner(object):
             files = os.listdir(self.save_dir)
             for file in files:
                 if 'best' in file:
-                    os.remove(file)
+                    file_path = os.path.join(self.save_dir, file)
+                    os.remove(file_path)
             policy_actor = self.trainer.policy.actor
             torch.save(policy_actor.state_dict(), str(self.save_dir) + f"/actor_{epoch}_best.pt")
             policy_critic = self.trainer.policy.critic

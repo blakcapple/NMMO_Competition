@@ -25,6 +25,7 @@ do
             --use_recurrent_policy \
             --n_eval_rollout_threads 1 \
             --eval_episodes 10 \
+            --save_interval 10 \
             --use_wandb
             # --use_value_norm
 done
