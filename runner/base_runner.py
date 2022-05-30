@@ -137,7 +137,7 @@ class Runner(object):
             policy_actor = self.trainer.policy.actor
             torch.save(policy_actor.state_dict(), str(self.save_dir) + f"/actor_{epoch}_best.pt")
             policy_critic = self.trainer.policy.critic
-            torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic_{epoch}_best.pt")
+            torch.save(policy_critic.state_dict(), str(self.save_dir) + f"/critic_{epoch}_best.pt")
         else:
             policy_actor = self.trainer.policy.actor
             torch.save(policy_actor.state_dict(), str(self.save_dir) + f"/actor_{epoch}.pt")

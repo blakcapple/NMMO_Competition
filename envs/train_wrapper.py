@@ -1,4 +1,4 @@
-from matplotlib.style import available
+from ast import Raise
 import nmmo
 import numpy as np
 from gym import Wrapper, spaces
@@ -7,9 +7,6 @@ from ijcai2022nmmo.scripted import CombatTeam, ForageTeam, RandomTeam
 from ijcai2022nmmo.scripted.baselines import Scripted
 from ijcai2022nmmo.scripted.scripted_team import ScriptedTeam
 from copy import deepcopy
-
-from wandb import agent
-
 
 class FeatureParser:
     map_size = 15
@@ -71,31 +68,92 @@ class FeatureParser:
                 "va": va
             }
         return ret
-
-
-class RewardParser:
-
-    def parse(self, prev_achv, achv):
-        reward = {
-            i: (sum(achv[i].values()) - sum(prev_achv[i].values())) / 100.0
-            for i in achv
-        }
-        return reward
-
-
+ 
 class TrainWrapper(Wrapper):
     max_step = 1024
     TT_ID = 0  # training team index
     use_auxiliary_script = False
 
-    def __init__(self, env: TeamBasedEnv) -> None:
+    def __init__(self, env: TeamBasedEnv, key='Exploration') -> None:
         super().__init__(env)
         self.feature_parser = FeatureParser()
-        self.reward_parser = RewardParser()
         self.observation_space = spaces.Box(low=0, high=1, shape=(17, 15, 15))
         self.share_observation_space = self.observation_space 
         self.action_space = spaces.Discrete(5)
         self.agent_num = 8 # 控制的智能体数量
+        self.skill = key
+    
+    @staticmethod
+    def compute_reward(prev_achv, achv, key='Exploration'):
+        reward = {}
+        incre_stage = {}
+        for i in achv:
+            # 基础生存奖励
+            reward[i] = (achv[i]['TimeAlive'] - prev_achv[i]['TimeAlive']) / 100.0
+            # 阶段性奖励（稀疏）
+            if key == 'Exploration':
+                dense_bonus = (achv[i][key] - prev_achv[i][key])/12.7
+                if 32 <= achv[i][key] and prev_achv[i][key] < 32:
+                    bonus = 10
+                    incre_stage[i] = True
+                elif 64 <= achv[i][key] and prev_achv[i][key] < 64:
+                    bonus = 10
+                    incre_stage[i] = True
+                elif 127 <= achv[i][key] and prev_achv[i][key] < 127:
+                    bonus = 10
+                    incre_stage[i] = True
+                else: 
+                    bonus = 0
+                    incre_stage[i] = False 
+            elif key == 'Foraging':
+                dense_bonus = (achv[i][key] - prev_achv[i][key])/5.0
+                if 20 <= achv[i][key] and prev_achv[i][key] < 20:
+                    bonus = 10
+                    incre_stage[i] = True
+                elif 35 <= achv[i][key] and prev_achv[i][key] < 35:
+                    bonus = 10
+                    incre_stage[i] = True
+                elif 50 <= achv[i][key] and prev_achv[i][key] < 50:
+                    bonus = 10
+                    incre_stage[i] = True
+                else: 
+                    bonus = 0
+                    incre_stage[i] = False
+            elif key == 'Equipment':
+                dense_bonus = (achv[i][key] - prev_achv[i][key])/2.0
+                if 1 <= achv[i][key] and prev_achv[i][key] < 1:
+                    bonus = 10
+                    incre_stage[i] = True
+                elif 10 <= achv[i][key] and prev_achv[i][key] < 10:
+                    bonus = 10
+                    incre_stage[i] = True
+                elif 20 <= achv[i][key] and prev_achv[i][key] < 20:
+                    bonus = 10
+                    incre_stage[i] = True
+                else: 
+                    bonus = 0
+                    incre_stage[i] = False
+            elif key == 'PlayerDefeats':
+                dense_bonus = (achv[i][key] - prev_achv[i][key])/6.0
+                if 1 <= achv[i][key] and prev_achv[i][key] < 1:
+                    bonus = 10
+                    incre_stage[i] = True
+                elif 3 <= achv[i][key] and prev_achv[i][key] < 3:
+                    bonus = 10
+                    incre_stage[i] = True
+                elif 6 <= achv[i][key] and prev_achv[i][key] < 6:
+                    bonus = 10
+                    incre_stage[i] = True
+                else: 
+                    bonus = 0
+                    incre_stage[i] = False
+            elif key == 'base':
+                dense_bonus, bonus = 0, 0   
+                incre_stage[i] = False   
+            else:  
+                raise NotImplementedError
+            reward[i] += (bonus + dense_bonus) 
+        return reward, incre_stage
 
     def _onehot_initialization(self, a, num_class=None):
         """
@@ -124,8 +182,11 @@ class TrainWrapper(Wrapper):
             features[agent_id] = feature
         return features
 
-    def reset(self):
+    def reset(self, random_team_id=True):
+        if random_team_id:
+            self.TT_ID = np.random.randint(0,16)
         raw_obs = super().reset()
+        self.stage = np.zeros(8)
         obs = raw_obs[self.TT_ID]
         obs = self.feature_parser.parse(obs)
         self.agents = list(obs.keys())
@@ -151,7 +212,7 @@ class TrainWrapper(Wrapper):
             actions,
             observations=self._prev_raw_obs[self.TT_ID],
             auxiliary_script=self.auxiliary_script)
-
+        # 与环境交互
         raw_obs, _, raw_done, raw_info = super().step(decisions)
         # if agent die, will not return its obs
         if self.TT_ID in raw_obs:
@@ -161,17 +222,20 @@ class TrainWrapper(Wrapper):
             obs = self.feature_parser.parse(obs)
             # compute reward
             achv = self.metrices_by_team()[self.TT_ID]
-            reward = self.reward_parser.parse(self._prev_achv, achv)
+            reward, incre_stage = self.compute_reward(self._prev_achv, achv, key=self.skill)
             self._prev_achv = achv
         else: 
             obs = {}
             done = {}
             reward = {}
             info = {}
+            incre_stage = {}
 
+        # 计算可行动作
         available_actions = np.zeros((8,5))
         for agent_id in obs:
-           available_actions[agent_id] = obs[agent_id]['va']     
+           available_actions[agent_id] = obs[agent_id]['va']   
+           self.stage[agent_id] += incre_stage[agent_id]
         self._prev_raw_obs = raw_obs
         self._step += 1
 
@@ -192,7 +256,10 @@ class TrainWrapper(Wrapper):
             if agent_id not in obs:
                 done_array[agent_id] = True 
                 reward_array[agent_id] = 0
-
+        # 重置环境
+        if np.all(done_array):
+            obs_array, share_obs_array, available_actions = self.reset()
+        info = self.stage
         # note: info contain true evaluation metrix !!
         return obs_array, share_obs_array, reward_array, done_array, info, available_actions 
 
@@ -212,21 +279,20 @@ class TrainWrapper(Wrapper):
         """
         重置脚本队伍
         """
-        if getattr(self, "_scripted_team", None) is not None:
-            for team in self._scripted_team.values():
-                team.reset()
-            return
+        # if getattr(self, "_scripted_team", None) is not None:
+        #     for team in self._scripted_team.values():
+        #         team.reset()
+        #     return
         self._scripted_team = {}
         assert config.NPOP == 16
-        for i in range(config.NPOP):
-            if i == self.TT_ID:
-                continue
-            if self.TT_ID < i <= self.TT_ID + 7:
-                self._scripted_team[i] = RandomTeam(f"random-{i}", config)
-            elif self.TT_ID + 7 < i <= self.TT_ID + 12:
-                self._scripted_team[i] = ForageTeam(f"forage-{i}", config)
-            elif self.TT_ID + 12 < i <= self.TT_ID + 15:
-                self._scripted_team[i] = CombatTeam(f"combat-{i}", config)
+        enermy_team_id = np.delete(np.arange(config.NPOP), self.TT_ID)
+        for index, id in enumerate(enermy_team_id):
+            if index < 7:
+                self._scripted_team[id] = RandomTeam(f"random-{id}", config)
+            elif 7<= index < 12:
+                self._scripted_team[id] = ForageTeam(f"forage-{id}", config)
+            elif 12<= index < 15:
+                self._scripted_team[id] = CombatTeam(f"combat-{id}", config)
 
     def get_scripted_team_decision(self, observations):
         decisions = {}
@@ -234,6 +300,7 @@ class TrainWrapper(Wrapper):
         for team_id, obs in observations.items():
             if team_id == tt_id:
                 continue
+            
             decisions[team_id] = self._scripted_team[team_id].act(obs)
         return decisions
 
