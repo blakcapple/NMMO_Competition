@@ -16,6 +16,7 @@ from distributed_rl.ppo.utils import create_env, set_seed
 import torch 
 from distributed_rl.ppo.utils import _t2n
 import time 
+import socket
 
 @ray.remote(num_gpus=1)
 class PPOLearner(Learner):
@@ -52,6 +53,16 @@ class PPOLearner(Learner):
         self.samples_num = 0
         self.save_interval = all_args.save_interval
         if self.use_wandb:
+            run = wandb.init(config=all_args,
+                            project=all_args.env_name,
+                            entity='the-one',
+                            notes=socket.gethostname(),
+                            name=str('mappo') + "_" +
+                                str(all_args.experiment_name) +
+                                "_seed" + str(all_args.seed),
+                            dir=str(config["run_dir"]),
+                            job_type="training",
+                            reinit=True)
             self.save_dir = str(wandb.run.dir)
             self.run_dir = str(wandb.run.dir)
         else:
@@ -158,7 +169,6 @@ class PPOLearner(Learner):
                 self.update_step += 1
                 self.samples_num = self.batch_size * self.update_step
                 time_used = time.time() - start_time
-                print(f'FPS:{self.samples_num / time_used:.2f}, best_reward:{self.best_reward}, update_step:{self.update_step}')
                 if self.evaluate_dict:
                     all_log_info = {**self.evaluate_dict, **train_infos}
                     if all_log_info['average_reward'] > self.best_reward:
@@ -166,6 +176,7 @@ class PPOLearner(Learner):
                         self.save(self.update_step, True)
                     self.log_info(all_log_info)
                     self.evaluate_dict = {}
+                    print(f'FPS:{self.samples_num / time_used:.2f}, best_reward:{self.best_reward}, update_step:{self.update_step}')
                 if self.update_step % self.save_interval == 0:
                     self.save(self.update_step)
 

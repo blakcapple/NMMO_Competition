@@ -16,7 +16,7 @@ do
             --experiment_name ${exp} \
             --seed ${seed} \
             --n_training_threads 127 \
-            --n_rollout_threads 14 \
+            --n_rollout_threads 8 \
             --num_mini_batch 1 \
             --episode_length 50 \
             --num_env_steps 100000000 \
@@ -25,8 +25,6 @@ do
             --use_recurrent_policy \
             --n_eval_rollout_threads 1 \
             --eval_episodes 10 \
-            --save_interval 10 \
-            --use_wandb
-            --load 
+            --save_interval 10
             # --use_value_norm
 done

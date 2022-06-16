@@ -12,6 +12,7 @@ import socket
 import numpy as np 
 from distributed_rl.ppo.ppo_worker import PPOWorker
 from distributed_rl.ppo.ppo_learner import PPOLearner
+import json 
 
 def parse_args(args, parser):
     parser.add_argument('--load', default=False, action='store_true')
@@ -52,30 +53,18 @@ def main(args):
     run_dir = Path((os.path.dirname(os.path.abspath(__file__)))
                         + "/results") / all_args.env_name / all_args.algorithm_name / all_args.experiment_name
     model_dir = Path(os.path.dirname(__file__)).resolve() / 'load_model'
-    if all_args.use_wandb:
-        run = wandb.init(config=all_args,
-                         project=all_args.env_name,
-                         entity='the-one',
-                         notes=socket.gethostname(),
-                         name=str('mappo') + "_" +
-                              str(all_args.experiment_name) +
-                              "_seed" + str(all_args.seed),
-                         dir=str(run_dir),
-                         job_type="training",
-                         reinit=True)
+    if not run_dir.exists():
+        curr_run = 'run1'
     else:
-        if not run_dir.exists():
+        exst_run_nums = [int(str(folder.name).split('run')[1]) for folder in run_dir.iterdir() if
+                            str(folder.name).startswith('run')]
+        if len(exst_run_nums) == 0:
             curr_run = 'run1'
         else:
-            exst_run_nums = [int(str(folder.name).split('run')[1]) for folder in run_dir.iterdir() if
-                             str(folder.name).startswith('run')]
-            if len(exst_run_nums) == 0:
-                curr_run = 'run1'
-            else:
-                curr_run = 'run%i' % (max(exst_run_nums) + 1)
-        run_dir = run_dir / curr_run
-        if not run_dir.exists():
-            os.makedirs(str(run_dir))    
+            curr_run = 'run%i' % (max(exst_run_nums) + 1)
+    run_dir = run_dir / curr_run
+    if not run_dir.exists():
+        os.makedirs(str(run_dir))    
     
     # 设置进程的别名
     setproctitle.setproctitle(
@@ -96,6 +85,8 @@ def main(args):
         'num_learners': 1,
         'model_dir':model_dir
     }
+    with open(str(run_dir)+'/arguments.txt', 'w') as f:
+        json.dump(all_args.__dict__, f, indent=2)
     port_cfg = dict(pubsub_port=4111,pullpush_port=4112, pair_port=4113, pubsub_port2=4114,)
     runner = Runner(PPOWorker, PPOLearner, port_cfg, config)
     runner.spawn()

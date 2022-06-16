@@ -134,7 +134,7 @@ class TrainWrapper(Wrapper):
                     bonus = 0
                     incre_stage[i] = False
             elif key == 'PlayerDefeats':
-                dense_bonus = (achv[i][key] - prev_achv[i][key])/6.0
+                dense_bonus = (achv[i][key] - prev_achv[i][key])/0.6
                 if 1 <= achv[i][key] and prev_achv[i][key] < 1:
                     bonus = 10
                     incre_stage[i] = True
