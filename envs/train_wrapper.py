@@ -189,6 +189,7 @@ class TrainWrapper(Wrapper):
         self.stage = np.zeros(8)
         obs = raw_obs[self.TT_ID]
         obs = self.feature_parser.parse(obs)
+        player_obs = self.player_parser.parse(raw_obs[self.TT_ID])
         self.agents = list(obs.keys())
 
         self.reset_auxiliary_script(self.config)
