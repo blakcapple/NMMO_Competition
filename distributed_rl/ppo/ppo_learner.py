@@ -35,17 +35,13 @@ class PPOLearner(Learner):
         self.load = all_args.load
         self.num_env_steps = all_args.num_env_steps
         env = create_env()
-        share_observation_space = env.share_observation_space if all_args.use_centralized_V else env.observation_space
         self.policy = Policy(all_args, 
-                             env.observation_space,
-                             share_observation_space,
                              env.action_space, 
                              self.device)
         self.trainer = Trainer(all_args, self.policy, self.device) 
         self.buffer = SharedReplayBuffer(all_args, 
                                         self.num_agents, 
                                         env.observation_space,
-                                        env.share_observation_space,
                                         env.action_space) 
         self.use_wandb = all_args.use_wandb
         self.workers_num = all_args.n_rollout_threads # the num of sampler worker
@@ -117,7 +113,7 @@ class PPOLearner(Learner):
         return (actor_params, critic_params)
 
     def build_buffer(self):
-        data_key = ['obs', 'share_obs', 'actions', 'available_actions', 'rnn_states', 
+        data_key = ['obs', 'actions', 'available_actions', 'rnn_states', 
                     'rnn_states_critic', 'rewards', 'masks', 'active_masks']
         all_data = dict()
         for key in data_key:
@@ -128,14 +124,29 @@ class PPOLearner(Learner):
                 all_data[key].append(replay_data[key])
         for key in data_key:
             assert hasattr(self.buffer, key), 'check keys!'
-            setattr(self.buffer, key, np.stack(all_data[key], axis=1))
-        
+            if key == 'obs':
+                data_obs = all_data[key]
+                for key_1 in data_obs[0].keys():
+                    for key_2 in data_obs[0][key_1].keys():
+                        self.buffer.obs[key_1][key_2] = np.stack([obs[key_1][key_2] for obs in data_obs], axis=1)
+
+            elif key == 'available_actions':
+                n = len(all_data['available_actions'][0])
+                for index in range(n):
+                    self.buffer.available_actions[index] = np.stack([va[index] for va in all_data['available_actions']], axis=1)
+            else:
+                setattr(self.buffer, key, np.stack(all_data[key], axis=1))
+                
 
     @torch.no_grad()
     def compute(self):
         """Calculate returns for the collected data."""
         self.trainer.prep_rollout()
-        next_values = self.trainer.policy.get_values(np.concatenate(self.buffer.share_obs[-1]),
+        last_obs = {'local_obs':{}, 'global_obs':{}}
+        for key, value in self.buffer.obs.items():
+            for key_1, value_1 in value.items():
+                last_obs[key][key_1] = value_1[-1]
+        next_values = self.trainer.policy.get_values(last_obs,
                                                 np.concatenate(self.buffer.rnn_states_critic[-1]),
                                                 np.concatenate(self.buffer.masks[-1]))
         next_values = np.array(np.split(_t2n(next_values), self.n_rollout_threads))
@@ -189,6 +200,7 @@ class PPOLearner(Learner):
         self.policy.actor.load_state_dict(policy_actor_state_dict)
         policy_critic_state_dict = torch.load(str(self.model_dir)+'/critic.pt')
         self.policy.critic.load_state_dict(policy_critic_state_dict)
+        self.trainer.value_normalizer.load(str(self.model_dir)+'/value_norm.pt')
 
     def log_info(self, data:dict):
         if self.use_wandb:
@@ -211,8 +223,10 @@ class PPOLearner(Learner):
             torch.save(policy_actor.state_dict(), str(self.save_dir) + f"/actor_{epoch}_best.pt")
             policy_critic = self.trainer.policy.critic
             torch.save(policy_critic.state_dict(), str(self.save_dir) + f"/critic_{epoch}_best.pt")
+            self.trainer.value_normalizer.save(str(self.save_dir)+f'/value_norm_{epoch}_best.pt')
         else:
             policy_actor = self.trainer.policy.actor
             torch.save(policy_actor.state_dict(), str(self.save_dir) + f"/actor_{epoch}.pt")
             policy_critic = self.trainer.policy.critic
             torch.save(policy_critic.state_dict(), str(self.save_dir) + f"/critic_{epoch}.pt")
+            self.trainer.value_normalizer.save(str(self.save_dir)+f'/value_norm_{epoch}.pt')

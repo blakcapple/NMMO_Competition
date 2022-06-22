@@ -8,6 +8,7 @@ from distributed_rl.ppo.utils import LocalBuffer, set_seed, create_env
 from algorithms.r_mappo.algorithm.rMAPPOPolicy import R_MAPPOPolicy as Policy
 import os 
 from tensorboardX import SummaryWriter
+from copy import deepcopy
 
 @ray.remote
 class PPOWorker(RLWorker):
@@ -26,67 +27,75 @@ class PPOWorker(RLWorker):
         self.recurrent_N = all_args.recurrent_N
         self.hidden_size = all_args.hidden_size
         self.use_centralized_V = all_args.use_centralized_V
-        self.skill = all_args.skill
         # create env
-        self.env = create_env(self.skill)
+        self.env = create_env(all_args.team_spirit)
         self.seed = worker_id*100 + all_args.seed
         self.env.seed(self.seed)
         set_seed(self.seed)
-        share_observation_space = self.env.share_observation_space if self.use_centralized_V else self.env.observation_space
 
         self.buffer = LocalBuffer(self.worker_buffer_size, 
                                   self.num_agents,
-                                  self.env.observation_space,
-                                  share_observation_space,
                                   self.env.action_space,
                                  ) # local buffer
         self.policy = Policy(all_args,
-                            self.env.observation_space,
-                            share_observation_space,
                             self.env.action_space,
                             device = self.device)
 
     def warmup(self):
         self.policy.actor.eval()
         self.policy.critic.eval()
-        obs, share_obs, available_actions = self.env.reset()
-        if not self.use_centralized_V:
-            share_obs = obs
-
-        self.buffer.share_obs[0] = share_obs.copy()
-        self.buffer.obs[0] = obs.copy()
-        self.buffer.available_actions[0] = available_actions.copy()
+        obs, available_actions, info = self.env.reset()
+        self.obs = obs
+        self.available_actions = available_actions
+        if isinstance(obs, dict):
+            for key_1 in obs.keys():
+                for key_2 in obs[key_1].keys():
+                    self.buffer.obs[key_1][key_2][0] = obs[key_1][key_2].copy()
+        else:
+            self.buffer.obs[0] = obs.copy()
+        if len(available_actions)>1:
+            for index, action in enumerate(available_actions):
+                self.buffer.available_actions[index][0] = action.copy()
+        else:
+            self.buffer.available_actions[0] = available_actions.copy()
+        
+        # self.buffer.available_actions[0] = available_actions.copy()
 
     @torch.no_grad()
     def collect(self, step):
-
+        if isinstance(self.obs, dict):
+            for key, value in self.obs.items():
+                for key_1, value_1 in value.items():
+                    self.obs[key][key_1] = value_1[np.newaxis,:] # 插入维度1方便后面的网络计算
         values, actions, action_log_probs, rnn_states, rnn_states_critic \
-         = self.policy.get_actions(self.buffer.share_obs[step],
-                                    self.buffer.obs[step],
+         = self.policy.get_actions(
+                                    self.obs,
                                     self.buffer.rnn_states[step],
                                     self.buffer.rnn_states_critic[step],
                                     self.buffer.masks[step],
-                                    self.buffer.available_actions[step])
-
+                                    self.available_actions)
         return values.numpy(), actions.numpy(), action_log_probs.numpy(), rnn_states.numpy(),\
                rnn_states_critic.numpy(), 
 
     def collect_data(self):
 
         for step in range(self.buffer.size):
-
+            
             values, actions, action_log_probs, rnn_states, rnn_states_critic = self.collect(step)
 
-            obs, share_obs, rewards, dones, infos, available_actions = self.env.step(actions)
+            obs, rewards, dones, infos, available_actions = self.env.step(actions)
 
-            data = obs, share_obs, rewards, dones, infos, available_actions, \
+            self.obs = deepcopy(obs) 
+            self.available_actions = deepcopy(available_actions)
+
+            data = obs, rewards, dones, infos, available_actions, \
                        values, actions, action_log_probs, \
                        rnn_states, rnn_states_critic 
             
             self.insert(data)
     
     def insert(self, data):
-        obs, share_obs, rewards, dones, infos, available_actions, \
+        obs, rewards, dones, infos, available_actions, \
         values, actions, action_log_probs, rnn_states, rnn_states_critic = data
 
         dones_env = np.all(dones)
@@ -105,12 +114,8 @@ class PPOWorker(RLWorker):
         if dones_env:
             active_masks = np.ones((self.num_agents, 1), dtype=np.float32)
         
-        if not self.use_centralized_V:
-            share_obs = obs
-
-        self.buffer.insert(share_obs, obs, rnn_states, rnn_states_critic,
+        self.buffer.insert(obs, rnn_states, rnn_states_critic,
                            actions, action_log_probs, values, rewards, masks, active_masks, available_actions)
-
 
     def act(self):
 
@@ -148,12 +153,16 @@ class PPOWorker(RLWorker):
         agent_episode_step_sequence = []
         average_episode_step_sequence = []
         episode = 0
-        eval_obs, eval_share_obs, eval_available_actions = self.env.reset()
+        eval_obs, eval_available_actions, info = self.env.reset()
         self.policy.actor.eval()
         self.policy.critic.eval()
         while True:
                 eval_rnn_states = np.zeros((self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
                 eval_masks = np.ones((self.num_agents, 1), dtype=np.float32)
+                if isinstance(eval_obs, dict):
+                    for key, value in eval_obs.items():
+                        for key_1, value_1 in value.items():
+                            eval_obs[key][key_1] = value_1[np.newaxis,:] # 插入维度1方便后面的网络计算
                 eval_actions, eval_rnn_states = \
                 self.policy.act(eval_obs,
                                 eval_rnn_states,eval_masks, 
@@ -161,7 +170,7 @@ class PPOWorker(RLWorker):
                                 deterministic=True)
                 eval_actions = eval_actions.numpy()
                 eval_rnn_states = eval_rnn_states.numpy()
-                eval_obs, eval_share_obs, eval_rewards, eval_dones, eval_infos, eval_available_actions = self.env.step(eval_actions)
+                eval_obs, eval_rewards, eval_dones, eval_infos, eval_available_actions = self.env.step(eval_actions)
                 eval_dones_env = np.all(eval_dones)
                 if eval_dones_env:
                     eval_rnn_states = np.zeros((self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
@@ -183,12 +192,14 @@ class PPOWorker(RLWorker):
                     episode += 1
                     evaluate_dict = dict(average_reward=np.mean(average_reward_sequence[-20:]),
                                          average_episode_step=np.mean(average_episode_step_sequence[-20:]),
-                                         average_stage=np.mean(stage),
+                                        #  average_stage=np.mean(stage),
                                          )
                     for i in range(8):
                         evaluate_dict[f'agent_{i}_reward'] = np.mean(np.array(agent_reward_sequence)[:,i][-20:])
                         evaluate_dict[f'agent_{i}_episode_step'] = np.mean(np.array(agent_episode_step_sequence)[:,i][-20:])
-                        evaluate_dict[f'agent_{i}_stage'] = stage[i]
+                        # evaluate_dict[f'agent_{i}_stage'] = stage[i]
+                    for key, value in stage.items():
+                        evaluate_dict[key] = value
                     self.send_evaluate_data(evaluate_dict) 
                     self.receive_new_params(wait=False)
                     episode_reward = []

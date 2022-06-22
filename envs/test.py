@@ -15,6 +15,7 @@ env = TeamBasedEnv(config=cfg)
 feature_parser = FeatureParser()
 while True:
     obs = env.reset()
-    obs_dict = feature_parser.parse(obs[0])
+    _,_,attack_index = feature_parser.parse(obs[0])
+    
     actions = np.zeros((8,1))
     obs_array, share_obs_array, reward_array, done_array, info, available_actions  = env.step(actions)

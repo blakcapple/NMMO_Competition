@@ -1,4 +1,5 @@
 from collections import namedtuple
+import enum
 import random
 import torch 
 import numpy as np 
@@ -11,10 +12,10 @@ Transition = namedtuple('Transition', ('state', 'action', 'mask', 'active_mask',
                                        'reward', 'value', 'log_prob', 'share_obs',
                                        'available_action', 'rnn_states', 'rnn_states_critic'))
 
-def create_env(skill='Exploration'):
+def create_env(team_sprit=0):
     cfg = CompetitionConfig()
     cfg.NMAPS = 400
-    return TrainWrapper(TeamBasedEnv(config=cfg), key=skill)
+    return TrainWrapper(TeamBasedEnv(config=cfg), team_sprit=team_sprit)
 
 def _t2n(x):
     return x.detach().cpu().numpy()
@@ -49,25 +50,43 @@ class Memory(object):
 
 class LocalBuffer:
 
-    def __init__(self, size, num_agents, obs_space, share_obs_space, act_space,
-                hidden_size=64, recurrent_N=1):
+    def __init__(self, size, num_agents, act_space, hidden_size=64, recurrent_N=1):
 
         self.size = size
-
+        self.multi_discrete = False
         if act_space.__class__.__name__ == 'Discrete':
             self.available_actions = np.ones((self.size + 1, num_agents, act_space.n),
                                              dtype=np.float32)
+        elif act_space.__class__.__name__ == 'MultiDiscrete':
+            self.multi_discrete = True
+            action_dims = act_space.nvec
+            self.available_actions = []
+            for action_dim in action_dims:
+                available_action = np.ones((self.size + 1, num_agents, action_dim),
+                                             dtype=np.float32)
+                self.available_actions.append(available_action)
         else:
             self.available_actions = None
 
         act_shape = get_shape_from_act_space(act_space)
-        obs_shape = get_shape_from_obs_space(obs_space)
-        share_obs_shape = get_shape_from_obs_space(share_obs_space)
+        # obs_shape = get_shape_from_obs_space(obs_space)
+        # share_obs_shape = get_shape_from_obs_space(share_obs_space)
 
 
-        self.share_obs = np.zeros((size + 1, num_agents, *share_obs_shape),
-                                  dtype=np.float32)
-        self.obs = np.zeros((size + 1, num_agents, *obs_shape), dtype=np.float32)
+        # self.obs = np.zeros((size + 1, num_agents, *obs_shape), dtype=np.float32)
+        local_obs = {
+            "agent_vector": np.zeros((size+1, num_agents, 17),dtype=np.float32),
+            "local_map": np.zeros((size+1, num_agents, 17, 15, 15), dtype=np.float32),
+            "attack_vector": np.zeros((size+1, num_agents, 20*12), dtype=np.float32),
+                    } 
+        global_obs = {
+            "npc_vector": np.zeros((size+1, 20, 17), dtype=np.float32),
+            "enemy_vector": np.zeros((size+1, 20, 17), dtype=np.float32),
+            "team_vector": np.zeros((size+1, num_agents*17), dtype=np.float32),
+            "time": np.zeros((size+1, 1), dtype=np.float32),
+                    }
+        self.obs = {'local_obs':local_obs, "global_obs":global_obs
+                    }
 
         self.rnn_states = np.zeros(
             (size + 1, num_agents, recurrent_N, hidden_size),
@@ -78,11 +97,16 @@ class LocalBuffer:
             (size + 1, num_agents, 1), dtype=np.float32)
 
         self.returns = np.zeros_like(self.value_preds)
-
-        self.actions = np.zeros(
-            (size, num_agents, act_shape), dtype=np.float32)
-        self.action_log_probs = np.zeros(
-            (size, num_agents, act_shape), dtype=np.float32)
+        if self.multi_discrete:
+            self.actions = np.zeros(
+                (size, num_agents, *act_shape), dtype=np.float32)
+            self.action_log_probs = np.zeros(
+                (size, num_agents, *act_shape), dtype=np.float32)
+        else:
+            self.actions = np.zeros(
+                (size, num_agents, act_shape), dtype=np.float32)
+            self.action_log_probs = np.zeros(
+                (size, num_agents, act_shape), dtype=np.float32)
         self.rewards = np.zeros(
             (size, num_agents, 1), dtype=np.float32)
 
@@ -93,11 +117,13 @@ class LocalBuffer:
 
         self.step = 0
 
-    def insert(self, share_obs, obs, rnn_states_actor, rnn_states_critic, actions, action_log_probs,
+    def insert(self, obs, rnn_states_actor, rnn_states_critic, actions, action_log_probs,
                value_preds, rewards, masks, active_masks=None, available_actions=None):
 
-        self.share_obs[self.step + 1] = share_obs.copy()
-        self.obs[self.step + 1] = obs.copy()
+        for key_1 in obs.keys():
+            for key_2 in obs[key_1].keys():
+                self.obs[key_1][key_2][self.step + 1] = obs[key_1][key_2].copy()
+
         self.rnn_states[self.step + 1] = rnn_states_actor.copy()
         self.rnn_states_critic[self.step + 1] = rnn_states_critic.copy()
         self.actions[self.step] = actions.copy()
@@ -108,7 +134,11 @@ class LocalBuffer:
         if active_masks is not None:
             self.active_masks[self.step + 1] = active_masks.copy()
         if available_actions is not None:
-            self.available_actions[self.step + 1] = available_actions.copy()
+            if self.multi_discrete:
+                for index, action in enumerate(available_actions):
+                    self.available_actions[index][self.step + 1] = action.copy()
+            else:
+                self.available_actions[self.step + 1] = available_actions.copy()
 
         self.step = (self.step + 1) % self.size
 
@@ -139,8 +169,7 @@ class LocalBuffer:
         """
         return all data in the buffer
         """    
-        return dict(obs=self.share_obs,
-                    share_obs=self.share_obs,
+        return dict(obs=self.obs,
                     rnn_states=self.rnn_states,
                     rnn_states_critic=self.rnn_states_critic,
                     available_actions=self.available_actions,
@@ -154,11 +183,17 @@ class LocalBuffer:
     def after_update(self):
         """Copy last timestep data to first index. Called after update to model."""
 
-        self.share_obs[0] = self.share_obs[-1].copy()
-        self.obs[0] = self.obs[-1].copy()
+        # self.obs[0] = self.obs[-1].copy()
+        for key_1 in self.obs.keys():
+            for key_2 in self.obs[key_1].keys():
+                self.obs[key_1][key_2][0] = self.obs[key_1][key_2][-1].copy()
         self.rnn_states[0] = self.rnn_states[-1].copy()
         self.rnn_states_critic[0] = self.rnn_states_critic[-1].copy()
         self.masks[0] = self.masks[-1].copy()
         self.active_masks[0] = self.active_masks[-1].copy()
         if self.available_actions is not None:
-            self.available_actions[0] = self.available_actions[-1].copy()
+            if self.multi_discrete:
+               for avaliable_action in self.available_actions:
+                    avaliable_action[0] = avaliable_action[-1].copy()
+            else:
+                self.available_actions[0] = self.available_actions[-1].copy()

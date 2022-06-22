@@ -21,7 +21,7 @@ class SharedReplayBuffer(object):
     :param act_space: (gym.Space) action space for agents.
     """
 
-    def __init__(self, args, num_agents, obs_space, cent_obs_space, act_space):
+    def __init__(self, args, num_agents, obs_space, act_space):
         self.episode_length = args.episode_length
         self.n_rollout_threads = args.n_rollout_threads
         self.hidden_size = args.hidden_size
@@ -33,18 +33,19 @@ class SharedReplayBuffer(object):
         self._use_valuenorm = args.use_valuenorm
         self._use_proper_time_limits = args.use_proper_time_limits
 
-        obs_shape = get_shape_from_obs_space(obs_space)
-        share_obs_shape = get_shape_from_obs_space(cent_obs_space)
-
-        if type(obs_shape[-1]) == list:
-            obs_shape = obs_shape[:1]
-
-        if type(share_obs_shape[-1]) == list:
-            share_obs_shape = share_obs_shape[:1]
-
-        self.share_obs = np.zeros((self.episode_length + 1, self.n_rollout_threads, num_agents, *share_obs_shape),
-                                  dtype=np.float32)
-        self.obs = np.zeros((self.episode_length + 1, self.n_rollout_threads, num_agents, *obs_shape), dtype=np.float32)
+        local_obs = {
+            "agent_vector": np.zeros((self.episode_length+1, self.n_rollout_threads, num_agents, 17),dtype=np.float32),
+            "local_map": np.zeros((self.episode_length+1, self.n_rollout_threads, num_agents, 17, 15, 15), dtype=np.float32),
+            "attack_vector": np.zeros((self.episode_length+1, self.n_rollout_threads, num_agents, 20*12), dtype=np.float32),
+                    } 
+        global_obs = {
+            "npc_vector": np.zeros((self.episode_length+1, self.n_rollout_threads, 20, 17), dtype=np.float32),
+            "enemy_vector": np.zeros((self.episode_length+1, self.n_rollout_threads, 20, 17), dtype=np.float32),
+            "team_vector": np.zeros((self.episode_length+1, self.n_rollout_threads, num_agents*17), dtype=np.float32),
+            "time": np.zeros((self.episode_length+1, self.n_rollout_threads, 1), dtype=np.float32),
+                    }
+        self.obs = {'local_obs':local_obs, "global_obs":global_obs
+                    }
 
         self.rnn_states = np.zeros(
             (self.episode_length + 1, self.n_rollout_threads, num_agents, self.recurrent_N, self.hidden_size),
@@ -58,22 +59,35 @@ class SharedReplayBuffer(object):
         if act_space.__class__.__name__ == 'Discrete':
             self.available_actions = np.ones((self.episode_length + 1, self.n_rollout_threads, num_agents, act_space.n),
                                              dtype=np.float32)
+        elif act_space.__class__.__name__ == 'MultiDiscrete':
+            self.multi_discrete = True
+            action_dims = act_space.nvec
+            self.available_actions = []
+            for action_dim in action_dims:
+                available_action = np.ones((self.episode_length + 1, num_agents, action_dim),
+                                             dtype=np.float32)
+                self.available_actions.append(available_action)
         else:
             self.available_actions = None
 
         act_shape = get_shape_from_act_space(act_space)
-
-        self.actions = np.zeros(
-            (self.episode_length, self.n_rollout_threads, num_agents, act_shape), dtype=np.float32)
-        self.action_log_probs = np.zeros(
-            (self.episode_length, self.n_rollout_threads, num_agents, act_shape), dtype=np.float32)
+        if self.multi_discrete:
+            self.actions = np.zeros(
+                (self.episode_length, self.n_rollout_threads, num_agents, *act_shape), dtype=np.float32)
+            self.action_log_probs = np.zeros(
+                (self.episode_length, self.n_rollout_threads, num_agents, *act_shape), dtype=np.float32)
+        else:
+            self.actions = np.zeros(
+                (self.episode_length, self.n_rollout_threads, num_agents, act_shape), dtype=np.float32)
+            self.action_log_probs = np.zeros(
+                (self.episode_length, self.n_rollout_threads, num_agents, act_shape), dtype=np.float32)
         self.rewards = np.zeros(
             (self.episode_length, self.n_rollout_threads, num_agents, 1), dtype=np.float32)
 
         self.masks = np.ones((self.episode_length + 1, self.n_rollout_threads, num_agents, 1), dtype=np.float32)
         self.bad_masks = np.ones_like(self.masks)
         self.active_masks = np.ones_like(self.masks)
-
+        self.num_agents = num_agents
         self.step = 0
 
     def insert(self, share_obs, obs, rnn_states_actor, rnn_states_critic, actions, action_log_probs,
@@ -129,6 +143,7 @@ class SharedReplayBuffer(object):
         :param next_value: (np.ndarray) value predictions for the step after the last episode step.
         :param value_normalizer: (PopArt) If not None, PopArt value normalizer instance.
         """
+
         if self._use_proper_time_limits:
             if self._use_gae:
                 self.value_preds[-1] = next_value
@@ -189,8 +204,8 @@ class SharedReplayBuffer(object):
         :param mini_batch_size: (int) number of samples in each minibatch.
         """
         episode_length, n_rollout_threads, num_agents = self.rewards.shape[0:3]
-        batch_size = n_rollout_threads * episode_length * num_agents
-
+        # batch_size = n_rollout_threads * episode_length * num_agents
+        batch_size = n_rollout_threads * episode_length
         if mini_batch_size is None:
             assert batch_size >= num_mini_batch, (
                 "PPO requires the number of processes ({}) "
@@ -203,30 +218,54 @@ class SharedReplayBuffer(object):
 
         rand = torch.randperm(batch_size).numpy()
         sampler = [rand[i * mini_batch_size:(i + 1) * mini_batch_size] for i in range(num_mini_batch)]
-
-        share_obs = self.share_obs[:-1].reshape(-1, *self.share_obs.shape[3:])
-        obs = self.obs[:-1].reshape(-1, *self.obs.shape[3:])
-        rnn_states = self.rnn_states[:-1].reshape(-1, *self.rnn_states.shape[3:])
-        rnn_states_critic = self.rnn_states_critic[:-1].reshape(-1, *self.rnn_states_critic.shape[3:])
-        actions = self.actions.reshape(-1, self.actions.shape[-1])
+        if isinstance(self.obs, dict):
+            obs = {'local_obs':{}, 'global_obs':{}}
+            for key, value in self.obs.items():
+                if isinstance(value, dict):
+                    for key_1, value_1 in value.items():
+                        obs[key][key_1] = value_1[:-1].reshape(-1, *value_1.shape[2:]) # 注意，由于obs的特殊性，对于obs不坍缩agent数量那个维度
+        else:
+            obs = self.obs[:-1].reshape(-1, *self.obs.shape[2:])
+        rnn_states = self.rnn_states[:-1].reshape(-1, *self.rnn_states.shape[2:])
+        rnn_states_critic = self.rnn_states_critic[:-1].reshape(-1, *self.rnn_states_critic.shape[2:])
+        actions = self.actions.reshape(-1, *self.actions.shape[2:])
         if self.available_actions is not None:
-            available_actions = self.available_actions[:-1].reshape(-1, self.available_actions.shape[-1])
-        value_preds = self.value_preds[:-1].reshape(-1, 1)
-        returns = self.returns[:-1].reshape(-1, 1)
-        masks = self.masks[:-1].reshape(-1, 1)
-        active_masks = self.active_masks[:-1].reshape(-1, 1)
-        action_log_probs = self.action_log_probs.reshape(-1, self.action_log_probs.shape[-1])
-        advantages = advantages.reshape(-1, 1)
+            if len(self.available_actions)>1:
+                available_actions = []
+                for va in self.available_actions:
+                    va = va[:-1].reshape(-1, self.num_agents, va.shape[-1])
+                    available_actions.append(va)
+            else:
+                available_actions = self.available_actions[:-1].reshape(-1, self.available_actions.shape[-1])
+        value_preds = self.value_preds[:-1].reshape(-1, self.num_agents, 1)
+        returns = self.returns[:-1].reshape(-1, self.num_agents, 1)
+        masks = self.masks[:-1].reshape(-1, self.num_agents, 1)
+        active_masks = self.active_masks[:-1].reshape(-1, self.num_agents, 1)
+        action_log_probs = self.action_log_probs.reshape(-1, self.num_agents, 1)
+        advantages = advantages.reshape(-1, self.num_agents, 1)
 
         for indices in sampler:
             # obs size [T+1 N M Dim]-->[T N M Dim]-->[T*N*M,Dim]-->[index,Dim]
-            share_obs_batch = share_obs[indices]
-            obs_batch = obs[indices]
+            if isinstance(obs, dict):
+                obs_batch = {'local_obs':{}, 'global_obs':{}}
+                for key, value in obs.items():
+                    if isinstance(value, dict):
+                        for key_1, value_1 in value.items():
+                            obs_batch[key][key_1] = value_1[indices]
+            else:
+                obs_batch = obs[indices]
+
             rnn_states_batch = rnn_states[indices]
             rnn_states_critic_batch = rnn_states_critic[indices]
             actions_batch = actions[indices]
             if self.available_actions is not None:
-                available_actions_batch = available_actions[indices]
+                if len(available_actions)> 1:
+                    available_actions_batch = []
+                    for va in available_actions:
+                        va = va[indices]
+                        available_actions_batch.append(va)
+                else:
+                    available_actions_batch = available_actions[indices]
             else:
                 available_actions_batch = None
             value_preds_batch = value_preds[indices]
@@ -239,7 +278,7 @@ class SharedReplayBuffer(object):
             else:
                 adv_targ = advantages[indices]
 
-            yield share_obs_batch, obs_batch, rnn_states_batch, rnn_states_critic_batch, actions_batch,\
+            yield obs_batch, rnn_states_batch, rnn_states_critic_batch, actions_batch,\
                   value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch,\
                   adv_targ, available_actions_batch
 

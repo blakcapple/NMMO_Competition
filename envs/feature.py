@@ -1,4 +1,3 @@
-from gym import spaces
 import numpy as np 
 
 class FeatureParser:
@@ -36,6 +35,7 @@ class FeatureParser:
         attack_vector = np.zeros((8, 20, 12), dtype=np.float32) # agent观察到的能够攻击的npc和敌人信息
         move_va_vector = np.zeros((8, self.move_n_actions), dtype=np.float32)
         attack_va_vector = np.zeros((8, self.attack_n_actions), dtype=np.float32)
+        attack_target_index = np.zeros((8, 20)) # 记录可以attack的目标的索引位置
         npc_id = []
         enemy_id = []
         npc_num = 0
@@ -46,7 +46,7 @@ class FeatureParser:
             entity = np.zeros((7, self.map_size, self.map_size),
                               dtype=np.float32)
             local_attack = []
-
+            target_index = [] # 可打击的目标的索引位置
             move_va = np.ones(self.move_n_actions, dtype=np.int64)
             attack_va = np.ones(self.attack_n_actions, dtype=np.int64)
 
@@ -86,6 +86,7 @@ class FeatureParser:
                 info[9+agent_id] = 1 # 向量末尾加上agent one-hot编码
                 if line[4] != P:
                     # 非队友信息
+                    target_index.append(index)
                     attack_info = np.zeros(12, dtype=np.float32)
                     attack_info[0] = 1 
                     if line[4] < 0:
@@ -131,39 +132,45 @@ class FeatureParser:
             agent_pos = agent_vector[agent_id][1:3]
             for i, value in enumerate(attack_vector[agent_id]):
                 if value[0] != 1:
-                    attack_va[i] = 0
-                    attack_va[i + 20] = 0
-                    attack_va[i + 40] = 0
+                    attack_va[i + 1] = 0
+                    attack_va[i + 21] = 0
+                    attack_va[i + 41] = 0
                 else:
                     target_pos = value[4:6]
                     # 智能体到目标的距离
                     distance = max(128 * np.abs(target_pos - agent_pos))
                     if distance > self.COMBAT_MAGE_REACH:
-                        attack_va[i] = 0
-                        attack_va[i + 20] = 0
-                        attack_va[i + 40] = 0
+                        attack_va[i + 1] = 0
+                        attack_va[i + 21] = 0
+                        attack_va[i + 41] = 0
                     elif distance > self.COMBAT_RANGE_REACH:
-                        attack_va[i] = 0
-                        attack_va[i + 20] = 0
+                        attack_va[i + 1] = 0
+                        attack_va[i + 21] = 0
                     elif distance > self.COMBAT_MELEE_REACH:
-                        attack_va[i] = 0
+                        attack_va[i + 1] = 0
                     else:
                         # 距离等于0，三种方式都不可以攻击
                         if distance == 0:
-                            attack_va[i] = 0
-                            attack_va[i + 20] = 0
-                            attack_va[i + 40] = 0
+                            attack_va[i + 1] = 0
+                            attack_va[i + 21] = 0
+                            attack_va[i + 41] = 0
             move_va_vector[agent_id] = move_va
             attack_va_vector[agent_id] = attack_va
+            attack_target_index[agent_id] = np.pad(np.array(target_index), (0, 20-len(target_index)), 'constant', constant_values=(0,0)) 
             
-        return {'agent_vector': agent_vector,
-                'team_vector': agent_vector.reshape(-1),
-                'enermy_vector': enemy_vector.reshape(-1),
-                'npc_vector': npc_vector.reshape(-1), 
-                'attack_vector': attack_vector.reshape(8,-1),
-                'local_map': local_map,
-                'move_va': move_va_vector,
-                'attack_va': attack_va_vector}
+        return {'local_obs':
+                    {
+                    'agent_vector': agent_vector,
+                    'local_map': local_map,
+                    'attack_vector': attack_vector.reshape(8,-1),
+                    },
+                'global_obs':
+                    {
+                    'team_vector': agent_vector.reshape(-1),
+                    'enemy_vector': enemy_vector,
+                    'npc_vector': npc_vector, 
+                    },
+                },{'move_va': move_va_vector,'attack_va': attack_va_vector}, attack_target_index
 
 
 

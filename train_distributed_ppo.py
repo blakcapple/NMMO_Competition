@@ -16,7 +16,7 @@ import json
 
 def parse_args(args, parser):
     parser.add_argument('--load', default=False, action='store_true')
-    parser.add_argument('--skill', default='Exploration', type=str)
+    parser.add_argument('--team_spirit', default=0, type=float)
     all_args = parser.parse_known_args(args)[0]
     return all_args
 

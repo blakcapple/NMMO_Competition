@@ -101,18 +101,18 @@ class R_MAPPO():
         :return actor_grad_norm: (torch.Tensor) gradient norm from actor update.
         :return imp_weights: (torch.Tensor) importance sampling weights.
         """
-        share_obs_batch, obs_batch, rnn_states_batch, rnn_states_critic_batch, actions_batch, \
+        obs_batch, rnn_states_batch, rnn_states_critic_batch, actions_batch, \
         value_preds_batch, return_batch, masks_batch, active_masks_batch, old_action_log_probs_batch, \
         adv_targ, available_actions_batch = sample
 
-        old_action_log_probs_batch = check(old_action_log_probs_batch).to(**self.tpdv)
-        adv_targ = check(adv_targ).to(**self.tpdv)
-        value_preds_batch = check(value_preds_batch).to(**self.tpdv)
-        return_batch = check(return_batch).to(**self.tpdv)
-        active_masks_batch = check(active_masks_batch).to(**self.tpdv)
+        old_action_log_probs_batch = check(old_action_log_probs_batch).to(**self.tpdv).reshape(-1, old_action_log_probs_batch.shape[-1])
+        adv_targ = check(adv_targ).to(**self.tpdv).reshape(-1, adv_targ.shape[-1])
+        value_preds_batch = check(value_preds_batch).to(**self.tpdv).reshape(-1, value_preds_batch.shape[-1])
+        return_batch = check(return_batch).to(**self.tpdv).reshape(-1, return_batch.shape[-1])
+        active_masks_batch = check(active_masks_batch).to(**self.tpdv).reshape(-1, active_masks_batch.shape[-1])
 
         # Reshape to do in a single forward pass for all steps
-        values, action_log_probs, dist_entropy = self.policy.evaluate_actions(share_obs_batch,
+        values, action_log_probs, dist_entropy = self.policy.evaluate_actions(
                                                                               obs_batch, 
                                                                               rnn_states_batch, 
                                                                               rnn_states_critic_batch, 
@@ -120,6 +120,8 @@ class R_MAPPO():
                                                                               masks_batch, 
                                                                               available_actions_batch,
                                                                               active_masks_batch)
+        
+        old_action_log_probs_batch = old_action_log_probs_batch.reshape(-1, old_action_log_probs_batch.shape[-1])
         # actor update
         imp_weights = torch.exp(action_log_probs - old_action_log_probs_batch)
 

@@ -21,7 +21,7 @@ class GlobalNet(nn.Module):
         enemy_vector: shape(n, 20, 17)
         team_vector: shape(n, 8*17)
         time: shape(n, 1)
-        out: shape(n, 8, 64+64+128+32)
+        out: shape(n, 8, 64+64+128+32=288)
         """
         npc_vector = input['npc_vector']
         enemy_vector = input['enemy_vector']
@@ -32,8 +32,8 @@ class GlobalNet(nn.Module):
         enemy_feature = self.enermy_net(enemy_vector).max(1).values
         team_feature = self.team_net(team_vector)
         time_feature = self.time_net(time)
-
         global_feature = torch.concat([npc_feature, enemy_feature, team_feature, time_feature], dim=1)
+        global_feature = global_feature.unsqueeze(1)
         global_feature = global_feature.repeat(1, 8, 1)
         return global_feature
         

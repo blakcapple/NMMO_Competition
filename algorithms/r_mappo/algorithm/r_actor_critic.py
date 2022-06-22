@@ -7,6 +7,7 @@ from algorithms.utils.rnn import RNNLayer
 from algorithms.utils.act import ACTLayer
 from algorithms.utils.popart import PopArt
 from utils.util import get_shape_from_obs_space
+from algorithms.net.nmmo_feature import NMMONet
 
 
 class R_Actor(nn.Module):
@@ -17,7 +18,7 @@ class R_Actor(nn.Module):
     :param action_space: (gym.Space) action space.
     :param device: (torch.device) specifies the device to run on (cpu/gpu).
     """
-    def __init__(self, args, obs_space, action_space, device=torch.device("cpu")):
+    def __init__(self, args, action_space, device=torch.device("cpu")):
         super(R_Actor, self).__init__()
         self.hidden_size = args.hidden_size
 
@@ -29,14 +30,11 @@ class R_Actor(nn.Module):
         self._recurrent_N = args.recurrent_N
         self.tpdv = dict(dtype=torch.float32, device=device)
 
-        obs_shape = get_shape_from_obs_space(obs_space)
-
-        base = CNNBase if len(obs_shape) == 3 else MLPBase
-        self.base = base(args, obs_shape)
+        self.base = NMMONet(config=None)
 
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:
             self.rnn = RNNLayer(self.hidden_size, self.hidden_size, self._recurrent_N, self._use_orthogonal)
-
+        
         self.act = ACTLayer(action_space, 512, self._use_orthogonal, self._gain)
 
         self.to(device)
@@ -55,19 +53,32 @@ class R_Actor(nn.Module):
         :return action_log_probs: (torch.Tensor) log probabilities of taken actions.
         :return rnn_states: (torch.Tensor) updated RNN hidden states.
         """
-        obs = check(obs).to(**self.tpdv)
+        if isinstance(obs, dict):
+            for key, value in obs.items():
+                if isinstance(value, dict):
+                    for key_1, value_1 in value.items():
+                        obs[key][key_1] = check(value_1).to(**self.tpdv)
+                else:
+                    obs[key] = check(value).to(**self.tpdv)
+        else:
+            obs = check(obs).to(**self.tpdv)
+
         rnn_states = check(rnn_states).to(**self.tpdv)
         masks = check(masks).to(**self.tpdv)
         if available_actions is not None:
-            available_actions = check(available_actions).to(**self.tpdv)
+            if len(available_actions) > 1:
+                for index, va in enumerate(available_actions):
+                    available_actions[index] = check(va).to(**self.tpdv)
+            else:
+                available_actions = check(available_actions).to(**self.tpdv)
 
         actor_features = self.base(obs)
 
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:
             actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)
-
+        
         actions, action_log_probs = self.act(actor_features, available_actions, deterministic)
-
+        
         return actions, action_log_probs, rnn_states
 
     def evaluate_actions(self, obs, rnn_states, action, masks, available_actions=None, active_masks=None):
@@ -84,25 +95,33 @@ class R_Actor(nn.Module):
         :return action_log_probs: (torch.Tensor) log probabilities of the input actions.
         :return dist_entropy: (torch.Tensor) action distribution entropy for the given inputs.
         """
-        obs = check(obs).to(**self.tpdv)
-        rnn_states = check(rnn_states).to(**self.tpdv)
-        action = check(action).to(**self.tpdv)
-        masks = check(masks).to(**self.tpdv)
+        if isinstance(obs, dict):
+            for key, value in obs.items():
+                if isinstance(value, dict):
+                    for key_1, value_1 in value.items():
+                        obs[key][key_1] = check(value_1).to(**self.tpdv)
+                else:
+                    obs[key] = check(value).to(**self.tpdv)
+        else:
+            obs = check(obs).to(**self.tpdv)
+        rnn_states = check(rnn_states).to(**self.tpdv).reshape(-1, rnn_states.shape[-1])
+        action = check(action).to(**self.tpdv).reshape(-1, action.shape[-1])
+        masks = check(masks).to(**self.tpdv).reshape(-1, masks.shape[-1])
         if available_actions is not None:
-            available_actions = check(available_actions).to(**self.tpdv)
-
-        if active_masks is not None:
-            active_masks = check(active_masks).to(**self.tpdv)
+            if len(available_actions) > 1:
+                for index, va in enumerate(available_actions):
+                    available_actions[index] = check(va).to(**self.tpdv).reshape(-1, va.shape[-1])
+            else:
+                available_actions = check(available_actions).to(**self.tpdv)
 
         actor_features = self.base(obs)
 
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:
             actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)
-
         action_log_probs, dist_entropy = self.act.evaluate_actions(actor_features,
                                                                    action, available_actions,
                                                                    active_masks=
-                                                                   active_masks if self._use_policy_active_masks
+                                                                   active_masks.reshape(-1, active_masks.shape[-1]) if self._use_policy_active_masks
                                                                    else None)
 
         return action_log_probs, dist_entropy
@@ -116,7 +135,7 @@ class R_Critic(nn.Module):
     :param cent_obs_space: (gym.Space) (centralized) observation space.
     :param device: (torch.device) specifies the device to run on (cpu/gpu).
     """
-    def __init__(self, args, cent_obs_space, device=torch.device("cpu")):
+    def __init__(self, args, device=torch.device("cpu")):
         super(R_Critic, self).__init__()
         self.hidden_size = args.hidden_size
         self._use_orthogonal = args.use_orthogonal
@@ -127,9 +146,7 @@ class R_Critic(nn.Module):
         self.tpdv = dict(dtype=torch.float32, device=device)
         init_method = [nn.init.xavier_uniform_, nn.init.orthogonal_][self._use_orthogonal]
 
-        cent_obs_shape = get_shape_from_obs_space(cent_obs_space)
-        base = CNNBase if len(cent_obs_shape) == 3 else MLPBase
-        self.base = base(args, cent_obs_shape)
+        self.base = NMMONet(config=None)
 
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:
             self.rnn = RNNLayer(self.hidden_size, self.hidden_size, self._recurrent_N, self._use_orthogonal)
@@ -154,7 +171,16 @@ class R_Critic(nn.Module):
         :return values: (torch.Tensor) value function predictions.
         :return rnn_states: (torch.Tensor) updated RNN hidden states.
         """
-        cent_obs = check(cent_obs).to(**self.tpdv)
+        if isinstance(cent_obs, dict):
+            for key, value in cent_obs.items():
+                if isinstance(value, dict):
+                    for key_1, value_1 in value.items():
+                        cent_obs[key][key_1] = check(value_1).to(**self.tpdv)
+                else:
+                    cent_obs[key] = check(value).to(**self.tpdv)
+        else:
+            cent_obs = check(cent_obs).to(**self.tpdv)
+            
         rnn_states = check(rnn_states).to(**self.tpdv)
         masks = check(masks).to(**self.tpdv)
 

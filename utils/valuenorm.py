@@ -78,3 +78,11 @@ class ValueNorm(nn.Module):
         out = out.cpu().numpy()
         
         return out
+
+    def save(self, pth):
+
+        torch.save(self.state_dict(), pth)
+    
+    def load(self, pth):
+
+        self.load_state_dict(torch.load(pth))
