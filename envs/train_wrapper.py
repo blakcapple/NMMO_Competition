@@ -72,7 +72,7 @@ class FeatureParser:
 class TrainWrapper(Wrapper):
     max_step = 1024
     TT_ID = 0  # training team index
-    use_auxiliary_script = False
+    use_auxiliary_script = True
 
     def __init__(self, env: TeamBasedEnv, key='Exploration') -> None:
         super().__init__(env)
@@ -85,75 +85,80 @@ class TrainWrapper(Wrapper):
     
     @staticmethod
     def compute_reward(prev_achv, achv, key='Exploration'):
-        reward = {}
-        incre_stage = {}
-        for i in achv:
-            # 基础生存奖励
-            reward[i] = (achv[i]['TimeAlive'] - prev_achv[i]['TimeAlive']) / 100.0
-            # 阶段性奖励（稀疏）
-            if key == 'Exploration':
-                dense_bonus = (achv[i][key] - prev_achv[i][key])/12.7
-                if 32 <= achv[i][key] and prev_achv[i][key] < 32:
-                    bonus = 10
-                    incre_stage[i] = True
-                elif 64 <= achv[i][key] and prev_achv[i][key] < 64:
-                    bonus = 10
-                    incre_stage[i] = True
-                elif 127 <= achv[i][key] and prev_achv[i][key] < 127:
-                    bonus = 10
-                    incre_stage[i] = True
-                else: 
-                    bonus = 0
-                    incre_stage[i] = False 
-            elif key == 'Foraging':
-                dense_bonus = (achv[i][key] - prev_achv[i][key])/5.0
-                if 20 <= achv[i][key] and prev_achv[i][key] < 20:
-                    bonus = 10
-                    incre_stage[i] = True
-                elif 35 <= achv[i][key] and prev_achv[i][key] < 35:
-                    bonus = 10
-                    incre_stage[i] = True
-                elif 50 <= achv[i][key] and prev_achv[i][key] < 50:
-                    bonus = 10
-                    incre_stage[i] = True
-                else: 
-                    bonus = 0
-                    incre_stage[i] = False
-            elif key == 'Equipment':
-                dense_bonus = (achv[i][key] - prev_achv[i][key])/2.0
-                if 1 <= achv[i][key] and prev_achv[i][key] < 1:
-                    bonus = 10
-                    incre_stage[i] = True
-                elif 10 <= achv[i][key] and prev_achv[i][key] < 10:
-                    bonus = 10
-                    incre_stage[i] = True
-                elif 20 <= achv[i][key] and prev_achv[i][key] < 20:
-                    bonus = 10
-                    incre_stage[i] = True
-                else: 
-                    bonus = 0
-                    incre_stage[i] = False
-            elif key == 'PlayerDefeats':
-                dense_bonus = (achv[i][key] - prev_achv[i][key])/6.0
-                if 1 <= achv[i][key] and prev_achv[i][key] < 1:
-                    bonus = 10
-                    incre_stage[i] = True
-                elif 3 <= achv[i][key] and prev_achv[i][key] < 3:
-                    bonus = 10
-                    incre_stage[i] = True
-                elif 6 <= achv[i][key] and prev_achv[i][key] < 6:
-                    bonus = 10
-                    incre_stage[i] = True
-                else: 
-                    bonus = 0
-                    incre_stage[i] = False
-            elif key == 'base':
-                dense_bonus, bonus = 0, 0   
-                incre_stage[i] = False   
-            else:  
-                raise NotImplementedError
-            reward[i] += (bonus + dense_bonus) 
-        return reward, incre_stage
+    #     reward = {}
+    #     incre_stage = {}
+    #     for i in achv:
+    #         # 基础生存奖励
+    #         reward[i] = (achv[i]['TimeAlive'] - prev_achv[i]['TimeAlive']) / 100.0
+    #         # 阶段性奖励（稀疏）
+    #         if key == 'Exploration':
+    #             dense_bonus = (achv[i][key] - prev_achv[i][key])/12.7
+    #             if 32 <= achv[i][key] and prev_achv[i][key] < 32:
+    #                 bonus = 10
+    #                 incre_stage[i] = True
+    #             elif 64 <= achv[i][key] and prev_achv[i][key] < 64:
+    #                 bonus = 10
+    #                 incre_stage[i] = True
+    #             elif 127 <= achv[i][key] and prev_achv[i][key] < 127:
+    #                 bonus = 10
+    #                 incre_stage[i] = True
+    #             else: 
+    #                 bonus = 0
+    #                 incre_stage[i] = False 
+    #         elif key == 'Foraging':
+    #             dense_bonus = (achv[i][key] - prev_achv[i][key])/5.0
+    #             if 20 <= achv[i][key] and prev_achv[i][key] < 20:
+    #                 bonus = 10
+    #                 incre_stage[i] = True
+    #             elif 35 <= achv[i][key] and prev_achv[i][key] < 35:
+    #                 bonus = 10
+    #                 incre_stage[i] = True
+    #             elif 50 <= achv[i][key] and prev_achv[i][key] < 50:
+    #                 bonus = 10
+    #                 incre_stage[i] = True
+    #             else: 
+    #                 bonus = 0
+    #                 incre_stage[i] = False
+    #         elif key == 'Equipment':
+    #             dense_bonus = (achv[i][key] - prev_achv[i][key])/2.0
+    #             if 1 <= achv[i][key] and prev_achv[i][key] < 1:
+    #                 bonus = 10
+    #                 incre_stage[i] = True
+    #             elif 10 <= achv[i][key] and prev_achv[i][key] < 10:
+    #                 bonus = 10
+    #                 incre_stage[i] = True
+    #             elif 20 <= achv[i][key] and prev_achv[i][key] < 20:
+    #                 bonus = 10
+    #                 incre_stage[i] = True
+    #             else: 
+    #                 bonus = 0
+    #                 incre_stage[i] = False
+    #         elif key == 'PlayerDefeats':
+    #             dense_bonus = (achv[i][key] - prev_achv[i][key])/6.0
+    #             if 1 <= achv[i][key] and prev_achv[i][key] < 1:
+    #                 bonus = 10
+    #                 incre_stage[i] = True
+    #             elif 3 <= achv[i][key] and prev_achv[i][key] < 3:
+    #                 bonus = 10
+    #                 incre_stage[i] = True
+    #             elif 6 <= achv[i][key] and prev_achv[i][key] < 6:
+    #                 bonus = 10
+    #                 incre_stage[i] = True
+    #             else: 
+    #                 bonus = 0
+    #                 incre_stage[i] = False
+    #         elif key == 'base':
+    #             dense_bonus, bonus = 0, 0   
+    #             incre_stage[i] = False   
+    #         else:  
+    #             raise NotImplementedError
+    #         reward[i] += (bonus + dense_bonus) 
+    #     return reward, incre_stage
+        reward = {
+            i: (sum(achv[i].values()) - sum(prev_achv[i].values())) / 100.0
+            for i in achv
+        }
+        return reward, {i: 0 for i in achv}
 
     def _onehot_initialization(self, a, num_class=None):
         """
@@ -182,7 +187,7 @@ class TrainWrapper(Wrapper):
             features[agent_id] = feature
         return features
 
-    def reset(self, random_team_id=True):
+    def reset(self, random_team_id=False):
         if random_team_id:
             self.TT_ID = np.random.randint(0,16)
         raw_obs = super().reset()

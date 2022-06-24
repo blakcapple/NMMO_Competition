@@ -16,9 +16,9 @@ do
             --experiment_name ${exp} \
             --seed ${seed} \
             --n_training_threads 127 \
-            --n_rollout_threads 14 \
+            --n_rollout_threads 8 \
             --num_mini_batch 1 \
-            --episode_length 50 \
+            --episode_length 100 \
             --num_env_steps 10000000 \
             --ppo_epoch 5 \
             --use_eval \

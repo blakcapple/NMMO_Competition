@@ -190,6 +190,6 @@ class PPOWorker(RLWorker):
                         evaluate_dict[f'agent_{i}_episode_step'] = np.mean(np.array(agent_episode_step_sequence)[:,i][-20:])
                         evaluate_dict[f'agent_{i}_stage'] = stage[i]
                     self.send_evaluate_data(evaluate_dict) 
-                    self.receive_new_params(wait=False)
+                    self.receive_new_params(wait=True)
                     episode_reward = []
                     episode_step = []
