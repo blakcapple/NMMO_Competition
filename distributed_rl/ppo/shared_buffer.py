@@ -241,7 +241,7 @@ class SharedReplayBuffer(object):
         returns = self.returns[:-1].reshape(-1, self.num_agents, 1)
         masks = self.masks[:-1].reshape(-1, self.num_agents, 1)
         active_masks = self.active_masks[:-1].reshape(-1, self.num_agents, 1)
-        action_log_probs = self.action_log_probs.reshape(-1, self.num_agents, 1)
+        action_log_probs = self.action_log_probs.reshape(-1, self.num_agents, self.action_log_probs.shape[-1])
         advantages = advantages.reshape(-1, self.num_agents, 1)
 
         for indices in sampler:

@@ -18,11 +18,11 @@ class NMMONet(nn.Module):
         local_obs = input['local_obs']
         global_obs = input['global_obs']
 
-        local_feature = self.local_net(local_obs)
-        global_feature = self.global_net(global_obs)
+        local_feature = self.local_net(local_obs) # (n, 8, 416)
+        global_feature = self.global_net(global_obs) # (n, 8, 288)
         assert(len(global_feature.shape)==3), print(global_feature.shape)
         assert(global_feature.shape[0]==local_feature.shape[0]), print(global_feature.shape, local_feature.shape)
         full_feature = torch.concat([local_feature, global_feature], dim=2)
         full_feature = self.linear_net(full_feature)
-        full_feature = full_feature.view(-1, *full_feature.shape[2:])
+        full_feature = full_feature.view(-1, *full_feature.shape[2:]) # (n*8, 512)
         return full_feature

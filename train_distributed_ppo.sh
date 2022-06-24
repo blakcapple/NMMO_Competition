@@ -16,7 +16,7 @@ do
             --experiment_name ${exp} \
             --seed ${seed} \
             --n_training_threads 127 \
-            --n_rollout_threads 2 \
+            --n_rollout_threads 4 \
             --num_mini_batch 1 \
             --episode_length 100 \
             --num_env_steps 10000000 \
@@ -26,6 +26,6 @@ do
             --n_eval_rollout_threads 1 \
             --eval_episodes 10 \
             --save_interval 50 \
-            --team_spirit 0.5 \
+            --team_spirit 0 \
             --use_wandb 
 done

@@ -120,7 +120,6 @@ class R_MAPPO():
                                                                               masks_batch, 
                                                                               available_actions_batch,
                                                                               active_masks_batch)
-        
         old_action_log_probs_batch = old_action_log_probs_batch.reshape(-1, old_action_log_probs_batch.shape[-1])
         # actor update
         imp_weights = torch.exp(action_log_probs - old_action_log_probs_batch)

@@ -147,7 +147,7 @@ class PPOLearner(Learner):
             for key_1, value_1 in value.items():
                 last_obs[key][key_1] = value_1[-1]
         next_values = self.trainer.policy.get_values(last_obs,
-                                                np.concatenate(self.buffer.rnn_states_critic[-1]),
+                                                np.concatenate(self.buffer.rnn_states_critic[-1]), # 合并前两个维度
                                                 np.concatenate(self.buffer.masks[-1]))
         next_values = np.array(np.split(_t2n(next_values), self.n_rollout_threads))
         self.buffer.compute_returns(next_values, self.trainer.value_normalizer)
@@ -172,6 +172,7 @@ class PPOLearner(Learner):
             self.publish_params(params)
             while self.samples_num <= self.num_env_steps:
                 self.build_buffer()
+                # breakpoint()
                 self.compute()
                 train_infos = self.train()
                 params = self.get_params()

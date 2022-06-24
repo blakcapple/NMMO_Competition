@@ -16,9 +16,9 @@ class MLPLayer(nn.Module):
             return init(m, init_method, lambda x: nn.init.constant_(x, 0), gain=gain)
 
         self.fc1 = nn.Sequential(
-            init_(nn.Linear(input_dim, hidden_size)), active_func, nn.LayerNorm(hidden_size))
+            init_(nn.Linear(input_dim, hidden_size)), active_func)
         self.fc_h = nn.Sequential(init_(
-            nn.Linear(hidden_size, hidden_size)), active_func, nn.LayerNorm(hidden_size))
+            nn.Linear(hidden_size, hidden_size)), active_func)
         self.fc2 = get_clones(self.fc_h, self._layer_N)
 
     def forward(self, x):
@@ -29,7 +29,7 @@ class MLPLayer(nn.Module):
 
 
 class MLPBase(nn.Module):
-    def __init__(self, obs_dim, hidden_size, layer_N, use_feature_normalization=True):
+    def __init__(self, obs_dim, hidden_size, layer_N, use_feature_normalization=False):
         super(MLPBase, self).__init__()
 
         self._use_orthogonal = True

@@ -1,4 +1,5 @@
 import numpy as np 
+from copy import copy
 
 class FeatureParser:
     map_size = 15
@@ -93,11 +94,11 @@ class FeatureParser:
                         attack_info[1] = 1
                     else:
                         attack_info[2] = 1
-                    attack_info[3:] = info[:9]
+                    attack_info[3:] = copy(info[:9])
                     local_attack.append(attack_info)
                 if index == 0: 
                     # agent info 
-                    agent_vector[agent_id] = info
+                    agent_vector[agent_id] = copy(info)
                 elif line[1] < 0 and line[1] not in npc_id:
                     # npc info
                     npc_id.append(line[1]) 

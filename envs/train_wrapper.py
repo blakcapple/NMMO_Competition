@@ -24,22 +24,6 @@ class TrainWrapper(Wrapper):
         self.agent_num = 8 # 控制的智能体数量
         self.reward_parser = RewardParser(team_sprit)
 
-    def _onehot_initialization(self, a, num_class=None):
-        """
-        把输入的numpy数组转成one-hot (没有完全看懂这个实现方式)
-        """
-        def _all_idx(idx, axis):
-            grid = np.ogrid[tuple(map(slice, idx.shape))]
-            grid.insert(axis, idx)
-            return tuple(grid)
-        if num_class == None:
-            ncols = a.max() + 1
-        else: 
-            ncols = num_class
-        out = np.zeros(a.shape + (ncols,), dtype=int)
-        out[_all_idx(a, axis=2)] = 1 
-        return out 
-
     def reset(self, random_team_id=True):
         if random_team_id:
             self.TT_ID = np.random.randint(0,16)
@@ -49,7 +33,7 @@ class TrainWrapper(Wrapper):
         obs, va, attack_index = self.feature_parser.parse(raw_team_obs)
         self.agents = list(raw_team_obs.keys())
 
-        self.reset_auxiliary_script(self.config)
+        # self.reset_auxiliary_script(self.config)
         self.reset_scripted_team(self.config)
         self._prev_achv = self.metrices_by_team()[self.TT_ID]
         self.reward_parser.reset(self._prev_achv)
@@ -111,7 +95,7 @@ class TrainWrapper(Wrapper):
 
         # 转成array数组
         reward_array = np.zeros((self.agent_num, 1))
-        done_array = np.zeros((self.agent_num))
+        done_array = np.zeros((self.agent_num), dtype=bool)
 
         for agent_id in team_obs:
             done_array[agent_id] = done[agent_id]

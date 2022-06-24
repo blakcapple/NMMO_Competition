@@ -11,9 +11,9 @@ class LocalNet(nn.Module):
         
         super().__init__()
         
-        self.agent_net = MLPBase(17, 32, 2, use_feature_normalization=True)
+        self.agent_net = MLPBase(17, 32, 2, use_feature_normalization=False)
         self.map_net = CNNBase()
-        self.attack_net = MLPBase(20*12, 128, 2, use_feature_normalization=True)
+        self.attack_net = MLPBase(20*12, 128, 2, use_feature_normalization=False)
 
     def forward(self, input:dict):
         """

@@ -123,6 +123,7 @@ class PPOWorker(RLWorker):
         local_buffer = self.buffer.get()
         self.send_replay_data(local_buffer) # 向global buffer 发送 local buffer 的数据
         self.receive_new_params() # 接收新的model参数
+        print(f'work_{self.worker_id} has received params from learner')
         self.buffer.after_update()
         # self.receive_new_learning_stage()
 
@@ -132,6 +133,7 @@ class PPOWorker(RLWorker):
             self.logger = SummaryWriter(log_dir)
             print(f'worker {self.worker_id} starts running')
             self.receive_new_params()
+            print(f'work_{self.worker_id} has received params from learner')
             if self.worker_id == 1:
                 """
                 evaluate
@@ -201,6 +203,7 @@ class PPOWorker(RLWorker):
                     for key, value in stage.items():
                         evaluate_dict[key] = value
                     self.send_evaluate_data(evaluate_dict) 
-                    self.receive_new_params(wait=False)
+                    self.receive_new_params(wait=True)
+                    print(f'work_{self.worker_id} has received params from learner')
                     episode_reward = []
                     episode_step = []
