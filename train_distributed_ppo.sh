@@ -28,5 +28,6 @@ do
             --save_interval 50 \
             --team_spirit 0 \
             --action_type 'move' \
-            --use_wandb 
+            --use_wandb \
+            --load
 done
