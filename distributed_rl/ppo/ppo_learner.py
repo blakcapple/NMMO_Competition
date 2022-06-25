@@ -34,7 +34,7 @@ class PPOLearner(Learner):
         self.model_dir = config['model_dir']
         self.load = all_args.load
         self.num_env_steps = all_args.num_env_steps
-        env = create_env()
+        env = create_env(all_args.team_spirit, all_args.action_type)
         self.policy = Policy(all_args, 
                              env.action_space, 
                              self.device)
@@ -63,7 +63,7 @@ class PPOLearner(Learner):
             self.run_dir = str(wandb.run.dir)
         else:
             self.run_dir = config["run_dir"]
-            self.log_dir = str(self.run_dir / 'logs')
+            self.log_dir = str(self.run_dir / 'logs' / 'learner')
             if not os.path.exists(self.log_dir):
                 os.makedirs(self.log_dir)
             self.writter = SummaryWriter(self.log_dir)
@@ -131,9 +131,12 @@ class PPOLearner(Learner):
                         self.buffer.obs[key_1][key_2] = np.stack([obs[key_1][key_2] for obs in data_obs], axis=1)
 
             elif key == 'available_actions':
-                n = len(all_data['available_actions'][0])
-                for index in range(n):
-                    self.buffer.available_actions[index] = np.stack([va[index] for va in all_data['available_actions']], axis=1)
+                if isinstance(all_data['available_actions'][0], list):
+                    n = len(all_data['available_actions'][0])
+                    for index in range(n):
+                        self.buffer.available_actions[index] = np.stack([va[index] for va in all_data['available_actions']], axis=1)
+                else:
+                    self.buffer.available_actions = np.stack(all_data[key], axis=1)
             else:
                 setattr(self.buffer, key, np.stack(all_data[key], axis=1))
                 
@@ -165,8 +168,6 @@ class PPOLearner(Learner):
             self.best_reward = -np.inf
             self.update_step = 0
             self.evaluate_dict = {}
-            log_dir = os.path.join(self.run_dir, 'learner')
-            self.logger = SummaryWriter(log_dir)
             # 同步所有的worker的参数
             params = self.get_params()
             self.publish_params(params)
@@ -188,7 +189,7 @@ class PPOLearner(Learner):
                         self.save(self.update_step, True)
                     self.log_info(all_log_info)
                     self.evaluate_dict = {}
-                    print(f'FPS:{self.samples_num / time_used:.2f}, best_reward:{self.best_reward}, update_step:{self.update_step}')
+                    print(f'FPS:{self.samples_num / time_used:.2f}, update_step:{self.update_step}')
                 if self.update_step % self.save_interval == 0:
                     self.save(self.update_step)
 
@@ -209,7 +210,7 @@ class PPOLearner(Learner):
                 wandb.log({key:value}, step=self.samples_num)
         else: 
             for key, value in data.items():
-                self.logger.add_scalar(key, value, self.samples_num)
+                self.writter.add_scalar(key, value, self.samples_num)
 
     def save(self, epoch, save_best=False):
         """Save policy's actor and critic networks."""

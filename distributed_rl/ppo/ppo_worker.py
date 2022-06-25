@@ -9,6 +9,8 @@ from algorithms.r_mappo.algorithm.rMAPPOPolicy import R_MAPPOPolicy as Policy
 import os 
 from tensorboardX import SummaryWriter
 from copy import deepcopy
+import wandb
+import socket
 
 @ray.remote
 class PPOWorker(RLWorker):
@@ -28,7 +30,7 @@ class PPOWorker(RLWorker):
         self.hidden_size = all_args.hidden_size
         self.use_centralized_V = all_args.use_centralized_V
         # create env
-        self.env = create_env(all_args.team_spirit)
+        self.env = create_env(all_args.team_spirit, all_args.action_type)
         self.seed = worker_id*100 + all_args.seed
         self.env.seed(self.seed)
         set_seed(self.seed)
@@ -53,7 +55,7 @@ class PPOWorker(RLWorker):
                     self.buffer.obs[key_1][key_2][0] = obs[key_1][key_2].copy()
         else:
             self.buffer.obs[0] = obs.copy()
-        if len(available_actions)>1:
+        if isinstance(available_actions, list):
             for index, action in enumerate(available_actions):
                 self.buffer.available_actions[index][0] = action.copy()
         else:
@@ -129,8 +131,6 @@ class PPOWorker(RLWorker):
 
     def run(self):
         try:
-            log_dir = os.path.join(self.run_dir, 'worker')
-            self.logger = SummaryWriter(log_dir)
             print(f'worker {self.worker_id} starts running')
             self.receive_new_params()
             print(f'work_{self.worker_id} has received params from learner')
@@ -158,6 +158,7 @@ class PPOWorker(RLWorker):
         eval_obs, eval_available_actions, info = self.env.reset()
         self.policy.actor.eval()
         self.policy.critic.eval()
+        best_reward = -np.inf 
         while True:
                 eval_rnn_states = np.zeros((self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
                 eval_masks = np.ones((self.num_agents, 1), dtype=np.float32)
@@ -190,19 +191,20 @@ class PPOWorker(RLWorker):
                     agent_episode_step_sequence.append(agent_episode_step)
                     average_reward_sequence.append(average_reward)
                     average_episode_step_sequence.append(average_step)
-                    stage = eval_infos
+                    # stage = eval_infos
                     episode += 1
                     evaluate_dict = dict(average_reward=np.mean(average_reward_sequence[-20:]),
                                          average_episode_step=np.mean(average_episode_step_sequence[-20:]),
-                                        #  average_stage=np.mean(stage),
                                          )
                     for i in range(8):
                         evaluate_dict[f'agent_{i}_reward'] = np.mean(np.array(agent_reward_sequence)[:,i][-20:])
                         evaluate_dict[f'agent_{i}_episode_step'] = np.mean(np.array(agent_episode_step_sequence)[:,i][-20:])
-                        # evaluate_dict[f'agent_{i}_stage'] = stage[i]
-                    for key, value in stage.items():
+                    for key, value in eval_infos.items():
                         evaluate_dict[key] = value
-                    self.send_evaluate_data(evaluate_dict) 
+                    self.send_evaluate_data(evaluate_dict)
+                    if best_reward < average_reward:
+                        best_reward = average_reward
+                    print(f'Reward:{average_reward:.3f}, Best Reward:{best_reward:.3f}')
                     self.receive_new_params(wait=True)
                     print(f'work_{self.worker_id} has received params from learner')
                     episode_reward = []

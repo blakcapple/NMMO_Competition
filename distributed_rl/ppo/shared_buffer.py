@@ -55,7 +55,7 @@ class SharedReplayBuffer(object):
         self.value_preds = np.zeros(
             (self.episode_length + 1, self.n_rollout_threads, num_agents, 1), dtype=np.float32)
         self.returns = np.zeros_like(self.value_preds)
-
+        self.multi_discrete = False
         if act_space.__class__.__name__ == 'Discrete':
             self.available_actions = np.ones((self.episode_length + 1, self.n_rollout_threads, num_agents, act_space.n),
                                              dtype=np.float32)
@@ -230,13 +230,13 @@ class SharedReplayBuffer(object):
         rnn_states_critic = self.rnn_states_critic[:-1].reshape(-1, *self.rnn_states_critic.shape[2:])
         actions = self.actions.reshape(-1, *self.actions.shape[2:])
         if self.available_actions is not None:
-            if len(self.available_actions)>1:
+            if self.multi_discrete:
                 available_actions = []
                 for va in self.available_actions:
                     va = va[:-1].reshape(-1, self.num_agents, va.shape[-1])
                     available_actions.append(va)
             else:
-                available_actions = self.available_actions[:-1].reshape(-1, self.available_actions.shape[-1])
+                available_actions = self.available_actions[:-1].reshape(-1, self.num_agents, self.available_actions.shape[-1])
         value_preds = self.value_preds[:-1].reshape(-1, self.num_agents, 1)
         returns = self.returns[:-1].reshape(-1, self.num_agents, 1)
         masks = self.masks[:-1].reshape(-1, self.num_agents, 1)
@@ -259,7 +259,7 @@ class SharedReplayBuffer(object):
             rnn_states_critic_batch = rnn_states_critic[indices]
             actions_batch = actions[indices]
             if self.available_actions is not None:
-                if len(available_actions)> 1:
+                if self.multi_discrete:
                     available_actions_batch = []
                     for va in available_actions:
                         va = va[indices]

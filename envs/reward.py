@@ -119,11 +119,11 @@ class RewardParser:
         alive_reward = (achv['TimeAlive'] - prev_achv['TimeAlive']) / 102.4
         explore_reward = (achv['Exploration'] - prev_achv['Exploration'])/ 12.7   
         equip_reward = (achv['Equipment'] - prev_achv['Equipment'])/ 2
-        defeat_reward = (achv['PlayerDefeats'] - prev_achv['PlayerDefeats'])/ 0.6
+        # defeat_reward = (achv['PlayerDefeats'] - prev_achv['PlayerDefeats'])/ 0.6
         forag_reward = (achv['Foraging'] - prev_achv['Foraging'])/ 5
-        reward = alive_reward + explore_reward + equip_reward + defeat_reward + forag_reward
-        for key in self.keys:
-            reward += (self.team_stage[key] - self.last_team_stage[key])*10
+        reward = alive_reward + explore_reward + equip_reward + forag_reward
+        # for key in self.keys:
+        #     reward += (self.team_stage[key] - self.last_team_stage[key])*10
         return reward 
 
     def compute_agent_reward(self, prev_achv, achv):
@@ -133,11 +133,12 @@ class RewardParser:
             alive_reward = (achv[i]['TimeAlive'] - prev_achv[i]['TimeAlive']) / 102.4
             explore_reward = (achv[i]['Exploration'] - prev_achv[i]['Exploration'])/ 12.7   
             equip_reward = (achv[i]['Equipment'] - prev_achv[i]['Equipment'])/ 2
-            defeat_reward = (achv[i]['PlayerDefeats'] - prev_achv[i]['PlayerDefeats'])/ 0.6
+            # defeat_reward = (achv[i]['PlayerDefeats'] - prev_achv[i]['PlayerDefeats'])/ 0.6
             forag_reward = (achv[i]['Foraging'] - prev_achv[i]['Foraging'])/ 5
-            reward[i] = alive_reward + explore_reward + equip_reward + defeat_reward + forag_reward
-            for key in self.keys:
-                reward[i] += (self.agent_stage[i][key] - self.last_agent_stage[i][key])*10
+            reward[i] = alive_reward + explore_reward + equip_reward + forag_reward
+            # reward[i] = (sum(achv[i].values()) - sum(prev_achv[i].values()))/100.0
+            # for key in self.keys:
+            #     reward[i] += (self.agent_stage[i][key] - self.last_agent_stage[i][key])*10
         return reward
 
     def parse(self, achv):
@@ -156,3 +157,25 @@ class RewardParser:
         self.prev_achv = achv
         self.max_prev_achv = max_achv
         return total_reward
+    # def parse(self, prev_achv, achv):
+    #     max_achv = {}
+    #     total_reward = {i:0 for i in achv}
+    #     for key in self.keys:
+    #         max_achv[key] = max([achv[i][key] for i in achv])
+    #     self.team_stage = self.update_team_stage(max_achv)
+    #     self.agent_stage = self.update_agent_stage(achv)
+    #     agent_reward = self.compute_agent_reward(self.prev_achv, achv)
+    #     team_reward = self.compute_team_reward(self.max_prev_achv, max_achv)
+    #     for i in achv:
+    #         total_reward[i] = (1-self.team_spirit) * agent_reward[i] + self.team_spirit*team_reward
+    #     self.last_team_stage = self.team_stage
+    #     self.last_agent_stage = self.agent_stage
+    #     self.prev_achv = achv
+    #     self.max_prev_achv = max_achv
+
+    #     reward = {
+    #         i: (sum(achv[i].values()) - sum(prev_achv[i].values())) / 100.0
+    #         for i in achv
+    #     }
+    #     return reward
+    

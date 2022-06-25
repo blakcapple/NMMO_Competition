@@ -12,10 +12,10 @@ Transition = namedtuple('Transition', ('state', 'action', 'mask', 'active_mask',
                                        'reward', 'value', 'log_prob', 'share_obs',
                                        'available_action', 'rnn_states', 'rnn_states_critic'))
 
-def create_env(team_sprit=0):
+def create_env(team_sprit=0, action_type='move'):
     cfg = CompetitionConfig()
     cfg.NMAPS = 400
-    return TrainWrapper(TeamBasedEnv(config=cfg), team_sprit=team_sprit)
+    return TrainWrapper(TeamBasedEnv(config=cfg), team_sprit=team_sprit, action_type=action_type)
 
 def _t2n(x):
     return x.detach().cpu().numpy()

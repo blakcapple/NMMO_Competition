@@ -66,7 +66,7 @@ class R_Actor(nn.Module):
         rnn_states = check(rnn_states).to(**self.tpdv)
         masks = check(masks).to(**self.tpdv)
         if available_actions is not None:
-            if len(available_actions) > 1:
+            if isinstance(available_actions, list):
                 for index, va in enumerate(available_actions):
                     available_actions[index] = check(va).to(**self.tpdv)
             else:
@@ -108,11 +108,11 @@ class R_Actor(nn.Module):
         action = check(action).to(**self.tpdv).reshape(-1, action.shape[-1])
         masks = check(masks).to(**self.tpdv).reshape(-1, masks.shape[-1])
         if available_actions is not None:
-            if len(available_actions) > 1:
+            if isinstance(available_actions, list):
                 for index, va in enumerate(available_actions):
                     available_actions[index] = check(va).to(**self.tpdv).reshape(-1, va.shape[-1])
             else:
-                available_actions = check(available_actions).to(**self.tpdv)
+                available_actions = check(available_actions).to(**self.tpdv).reshape(-1, available_actions.shape[-1])
 
         actor_features = self.base(obs)
 

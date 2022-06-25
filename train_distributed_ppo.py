@@ -17,6 +17,7 @@ import json
 def parse_args(args, parser):
     parser.add_argument('--load', default=False, action='store_true')
     parser.add_argument('--team_spirit', default=0, type=float)
+    parser.add_argument('--action_type', default='move', type=str) # 指定训练的动作类型
     all_args = parser.parse_known_args(args)[0]
     return all_args
 
