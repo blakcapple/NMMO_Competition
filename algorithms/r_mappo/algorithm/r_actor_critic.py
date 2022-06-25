@@ -76,7 +76,6 @@ class R_Actor(nn.Module):
 
         if self._use_naive_recurrent_policy or self._use_recurrent_policy:
             actor_features, rnn_states = self.rnn(actor_features, rnn_states, masks)
-        
         actions, action_log_probs = self.act(actor_features, available_actions, deterministic)
         
         return actions, action_log_probs, rnn_states

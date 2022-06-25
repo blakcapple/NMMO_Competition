@@ -64,9 +64,9 @@ class Categorical(nn.Module):
     def forward(self, x, available_actions=None):
         x = self.linear(x)
         if available_actions is not None:
+            assert x.shape == available_actions.shape, print(x.shape, available_actions.shape)
             x[available_actions == 0] = -1e10
         return FixedCategorical(logits=x)
-
 
 class DiagGaussian(nn.Module):
     def __init__(self, num_inputs, num_outputs, use_orthogonal=True, gain=0.01):

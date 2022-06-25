@@ -27,7 +27,7 @@ do
             --eval_episodes 10 \
             --save_interval 50 \
             --team_spirit 0 \
-            --action_type 'move' \
-            --use_wandb \
-            --load
+            --action_type 'attack' \
+            --use_wandb 
+            # --load
 done

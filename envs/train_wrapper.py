@@ -9,11 +9,13 @@ from ijcai2022nmmo.scripted.scripted_team import ScriptedTeam
 from copy import deepcopy
 from envs.feature import FeatureParser
 from envs.reward import RewardParser
+from envs.move import MovePolicy
  
 class TrainWrapper(Wrapper):
     max_step = 1024
     TT_ID = 0  # training team index
-    use_auxiliary_script = True
+    use_auxiliary_script = False
+    use_pretrained_move_net = True
 
     def __init__(self, env: TeamBasedEnv, team_sprit=0, action_type='move') -> None:
         super().__init__(env)
@@ -29,7 +31,13 @@ class TrainWrapper(Wrapper):
             self.action_space = spaces.MultiDiscrete([5, 61])
         self.agent_num = 8 # 控制的智能体数量
         self.reward_parser = RewardParser(team_sprit)
-
+        if self.use_pretrained_move_net:
+            self.move_policy = MovePolicy()
+            from pathlib import Path
+            import os 
+            pth = Path(os.path.dirname(__file__)) / 'load_model' / 'actor.pt'
+            self.move_policy.net.load(pth)
+            
     def reset(self, random_team_id=False):
         if random_team_id:
             self.TT_ID = np.random.randint(0,16)
@@ -71,7 +79,8 @@ class TrainWrapper(Wrapper):
             actions,
             self.current_attack_index,
             observations=self._prev_raw_obs[self.TT_ID],
-            auxiliary_script=self.auxiliary_script
+            auxiliary_script=self.auxiliary_script, 
+            move_policy=self.move_policy
             )
         # 与环境交互
         raw_obs, _, raw_done, raw_info = super().step(decisions)
@@ -105,7 +114,6 @@ class TrainWrapper(Wrapper):
             available_actions = attack_va
         elif self.action_space == 'both':
             available_actions = [move_va, attack_va]
-        available_actions = move_va
         self._prev_raw_obs = raw_obs
         
         if self._step >= self.max_step:
@@ -172,7 +180,7 @@ class TrainWrapper(Wrapper):
         return decisions
 
     @staticmethod
-    def transform_action(action_type, actions, all_target_index, observations=None, auxiliary_script=None):
+    def transform_action(action_type, actions, all_target_index, observations=None, auxiliary_script=None, move_policy=None):
         """neural network move + scripted attack"""
         decisions = {}
         move_action = None
@@ -184,6 +192,9 @@ class TrainWrapper(Wrapper):
         elif action_type == 'both':
             move_action = actions[:,0]
             raw_attack_action = actions[:,1]
+        # 预训练的move_policy
+        if move_policy is not None:
+            move_action = move_policy.get_decision(observations)
         # move decisions
         if move_action is not None:
             for agent_id, val in enumerate(move_action):
