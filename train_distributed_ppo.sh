@@ -27,6 +27,7 @@ do
             --eval_episodes 10 \
             --save_interval 50 \
             --use_wandb \
-            --skill 'base' 
+            --skill 'base' \
+            --load 
             # --use_value_norm
 done
