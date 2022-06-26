@@ -29,22 +29,19 @@ class FeatureParser:
         return out
 
     def parse(self, obs):
-        local_map = np.zeros((8, 17, 15, 15), dtype=np.float32) # 以agent为中心的空间信息
+        local_map = np.zeros((8, 37, 15, 15), dtype=np.float32) # 以agent为中心的空间信息
+        global_map = np.zeros((11, 128, 128), dtype=np.float32) # 全局map信息
         agent_vector = np.zeros((8, 17), dtype=np.float32) # agent 本身的信息
-        npc_vector = np.zeros((20, 17), dtype=np.float32) # team观察到的所有npc信息
-        enemy_vector = np.zeros((20, 17), dtype=np.float32) # team观察到的所有的敌人的信息
         attack_vector = np.zeros((8, 20, 12), dtype=np.float32) # agent观察到的能够攻击的npc和敌人信息
         move_va_vector = np.zeros((8, self.move_n_actions), dtype=np.float32)
         attack_va_vector = np.zeros((8, self.attack_n_actions), dtype=np.float32)
         attack_target_index = np.zeros((8, 20)) # 记录可以attack的目标的索引位置
-        npc_id = []
-        enemy_id = []
-        npc_num = 0
-        player_num = 0
+        team_id = []
         for agent_id in obs:
+            team_id.append(agent_id)
             terrain = np.zeros((self.map_size, self.map_size), dtype=np.int64)
             camp = np.zeros((self.map_size, self.map_size), dtype=np.int64)
-            entity = np.zeros((7, self.map_size, self.map_size),
+            entity = np.zeros((27, self.map_size, self.map_size),
                               dtype=np.float32)
             local_attack = []
             target_index = [] # 可打击的目标的索引位置
@@ -66,28 +63,30 @@ class FeatureParser:
                 r, c = int(raw_r - LT_R), int(raw_c - LT_C) # 在智能体视野内的相对位置坐标
                 camp[r, c] = 2 if raw_pop == P else np.sign(raw_pop) + 2 # none 0; npc 1; team 2; other 3 
                 # level
-                entity[0, r, c] = line[3] / 10 
+                entity[0, r, c] = line[3] 
                 # damage, timealive, food, water, health, is_freezed
-                entity[1, r, c] = line[7] / 10 
-                entity[2, r, c] = line[8] / 1024 
-                entity[3, r, c] = line[9] / 10 
-                entity[4, r, c] = line[10] / 10
-                entity[5, r, c] = line[11] / 10
+                entity[1, r, c] = line[7] 
+                entity[2, r, c] = line[8] / 100
+                entity[3, r, c] = line[9] 
+                entity[4, r, c] = line[10] 
+                entity[5, r, c] = line[11]
+                entity[6, r, c] = line[12]
+                one_hot_camp = self._onehot_initialization(camp[r,c], num_class=4)
+                global_map[:,int(min(raw_r, 127)),int(min(raw_c, 127))] = np.concatenate([one_hot_camp, entity[:7,r,c]])
 
                 info = np.zeros(17, dtype=np.float32)
-                info[0] = line[3] / 10.0 
+                info[0] = line[3]  
                 info[1] = line[5] / 128 
                 info[2] = line[6] / 128
-                info[3] = line[7] / 10
-                info[4] = line[8] / 1024 
-                info[5] = line[9] / 10 
-                info[6] = line[10] / 10
-                info[7] = line[11] / 10
+                info[3] = line[7] 
+                info[4] = line[8] / 100
+                info[5] = line[9] 
+                info[6] = line[10]
+                info[7] = line[11] 
                 info[8] = line[12]
                 info[9+agent_id] = 1 # 向量末尾加上agent one-hot编码
                 if line[4] != P:
-                    # 非队友信息
-                    target_index.append(index)
+                    # 非队友信息 
                     attack_info = np.zeros(12, dtype=np.float32)
                     attack_info[0] = 1 
                     if line[4] < 0:
@@ -96,23 +95,14 @@ class FeatureParser:
                         attack_info[2] = 1
                     attack_info[3:] = copy(info[:9])
                     local_attack.append(attack_info)
+                    # 在entity后面填补位置信息
+                    if len(target_index)<=20:
+                        target_index.append(index)
+                        entity[6+len(target_index), r, c] = 1
+
                 if index == 0: 
                     # agent info 
                     agent_vector[agent_id] = copy(info)
-                elif line[1] < 0 and line[1] not in npc_id:
-                    # npc info
-                    npc_id.append(line[1]) 
-                    npc_num += 1
-                    if npc_num > 20:
-                        break
-                    npc_vector[npc_num-1] = info
-                elif line[1] > 0 and line[1] not in enemy_id and line[4] != P:
-                    # enemy info
-                    enemy_id.append(line[1])
-                    player_num += 1
-                    if player_num > 20:
-                        break  
-                    enemy_vector[player_num-1] = info
             
             # valid move_action
             for i, (r, c) in enumerate(self.NEIGHBOR):
@@ -158,18 +148,22 @@ class FeatureParser:
             move_va_vector[agent_id] = move_va
             attack_va_vector[agent_id] = attack_va
             attack_target_index[agent_id] = np.pad(np.array(target_index), (0, 20-len(target_index)), 'constant', constant_values=(0,0)) 
-            
+            team_vector = np.zeros((8, 7, 17), dtype=np.float32)
+        for agent_id in obs:
+            id_copy = copy(team_id)
+            id_copy.remove(agent_id)
+            if len(id_copy) >= 1:
+                friend_vector = np.stack([agent_vector[id] for id in id_copy])
+                team_vector[agent_id,:friend_vector.shape[0]] = friend_vector
         return {'local_obs':
                     {
                     'agent_vector': agent_vector,
                     'local_map': local_map,
-                    'attack_vector': attack_vector.reshape(8,-1),
+                    'team_vector':team_vector.reshape(8,-1)
                     },
                 'global_obs':
                     {
-                    'team_vector': agent_vector.reshape(-1),
-                    'enemy_vector': enemy_vector,
-                    'npc_vector': npc_vector, 
+                    'global_map': global_map
                     },
                 },{'move_va': move_va_vector,'attack_va': attack_va_vector}, attack_target_index
 

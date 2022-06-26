@@ -160,52 +160,52 @@ class PPOWorker(RLWorker):
         self.policy.critic.eval()
         best_reward = -np.inf 
         while True:
+            eval_rnn_states = np.zeros((self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
+            eval_masks = np.ones((self.num_agents, 1), dtype=np.float32)
+            if isinstance(eval_obs, dict):
+                for key, value in eval_obs.items():
+                    for key_1, value_1 in value.items():
+                        eval_obs[key][key_1] = value_1[np.newaxis,:] # 插入维度1方便后面的网络计算
+            eval_actions, eval_rnn_states = \
+            self.policy.act(eval_obs,
+                            eval_rnn_states,eval_masks, 
+                            eval_available_actions, 
+                            deterministic=True)
+            eval_actions = eval_actions.numpy()
+            eval_rnn_states = eval_rnn_states.numpy()
+            eval_obs, eval_rewards, eval_dones, eval_infos, eval_available_actions = self.env.step(eval_actions)
+            eval_dones_env = np.all(eval_dones)
+            if eval_dones_env:
                 eval_rnn_states = np.zeros((self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
-                eval_masks = np.ones((self.num_agents, 1), dtype=np.float32)
-                if isinstance(eval_obs, dict):
-                    for key, value in eval_obs.items():
-                        for key_1, value_1 in value.items():
-                            eval_obs[key][key_1] = value_1[np.newaxis,:] # 插入维度1方便后面的网络计算
-                eval_actions, eval_rnn_states = \
-                self.policy.act(eval_obs,
-                                eval_rnn_states,eval_masks, 
-                                eval_available_actions, 
-                                deterministic=True)
-                eval_actions = eval_actions.numpy()
-                eval_rnn_states = eval_rnn_states.numpy()
-                eval_obs, eval_rewards, eval_dones, eval_infos, eval_available_actions = self.env.step(eval_actions)
-                eval_dones_env = np.all(eval_dones)
-                if eval_dones_env:
-                    eval_rnn_states = np.zeros((self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
-                eval_masks = np.ones((self.num_agents, 1), dtype=np.float32)
-                if eval_dones_env:
-                    eval_masks = np.zeros((self.num_agents, 1), dtype=np.float32)
-                episode_reward.append(eval_rewards) 
-                episode_step.append(~np.array(eval_dones, dtype=bool))
-                if eval_dones_env:
-                    agent_reward = np.sum(episode_reward, axis=0)
-                    agent_episode_step = np.sum(episode_step, axis=0)
-                    average_reward = np.mean(agent_reward)
-                    average_step = np.mean(agent_episode_step)
-                    agent_reward_sequence.append(agent_reward)
-                    agent_episode_step_sequence.append(agent_episode_step)
-                    average_reward_sequence.append(average_reward)
-                    average_episode_step_sequence.append(average_step)
-                    # stage = eval_infos
-                    episode += 1
-                    evaluate_dict = dict(average_reward=np.mean(average_reward_sequence[-20:]),
-                                         average_episode_step=np.mean(average_episode_step_sequence[-20:]),
-                                         )
-                    for i in range(8):
-                        evaluate_dict[f'agent_{i}_reward'] = np.mean(np.array(agent_reward_sequence)[:,i][-20:])
-                        evaluate_dict[f'agent_{i}_episode_step'] = np.mean(np.array(agent_episode_step_sequence)[:,i][-20:])
-                    for key, value in eval_infos.items():
-                        evaluate_dict[key] = value
-                    self.send_evaluate_data(evaluate_dict)
-                    if best_reward < average_reward:
-                        best_reward = average_reward
-                    print(f'Reward:{average_reward:.3f}, Best Reward:{best_reward:.3f}')
-                    self.receive_new_params(wait=True)
-                    print(f'work_{self.worker_id} has received params from learner')
-                    episode_reward = []
-                    episode_step = []
+            eval_masks = np.ones((self.num_agents, 1), dtype=np.float32)
+            if eval_dones_env:
+                eval_masks = np.zeros((self.num_agents, 1), dtype=np.float32)
+            episode_reward.append(eval_rewards) 
+            episode_step.append(~np.array(eval_dones, dtype=bool))
+            if eval_dones_env:
+                agent_reward = np.sum(episode_reward, axis=0)
+                agent_episode_step = np.sum(episode_step, axis=0)
+                average_reward = np.mean(agent_reward)
+                average_step = np.mean(agent_episode_step)
+                agent_reward_sequence.append(agent_reward)
+                agent_episode_step_sequence.append(agent_episode_step)
+                average_reward_sequence.append(average_reward)
+                average_episode_step_sequence.append(average_step)
+                # stage = eval_infos
+                episode += 1
+                evaluate_dict = dict(average_reward=np.mean(average_reward_sequence[-20:]),
+                                        average_episode_step=np.mean(average_episode_step_sequence[-20:]),
+                                        )
+                for i in range(8):
+                    evaluate_dict[f'agent_{i}_reward'] = np.mean(np.array(agent_reward_sequence)[:,i][-20:])
+                    evaluate_dict[f'agent_{i}_episode_step'] = np.mean(np.array(agent_episode_step_sequence)[:,i][-20:])
+                for key, value in eval_infos.items():
+                    evaluate_dict[key] = value
+                self.send_evaluate_data(evaluate_dict)
+                if best_reward < average_reward:
+                    best_reward = average_reward
+                print(f'Reward:{average_reward:.3f}, Best Reward:{best_reward:.3f}')
+                self.receive_new_params(wait=True)
+                print(f'work_{self.worker_id} has received params from learner')
+                episode_reward = []
+                episode_step = []

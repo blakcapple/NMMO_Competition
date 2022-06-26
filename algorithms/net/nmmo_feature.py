@@ -11,7 +11,7 @@ class NMMONet(nn.Module):
         super().__init__()
         self.local_net = LocalNet(config)
         self.global_net = GlobalNet(config)
-        self.linear_net = MLPBase(704, 512, layer_N=1)
+        self.linear_net = MLPBase(1248, 512, layer_N=1)
 
     def forward(self, input):
         

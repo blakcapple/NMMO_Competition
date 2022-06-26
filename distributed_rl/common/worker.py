@@ -95,10 +95,11 @@ class RLWorker(Worker):
         self.policy = None 
 
     def synchronize(self, new_params: list):
-
+        
         new_actor_params, new_critic_params = new_params
         for actor_param, new_actor_params in zip(self.policy.actor.parameters(), new_actor_params):
             new_actor_params = torch.FloatTensor(new_actor_params.copy()).to(self.device)
+            assert new_actor_params.shape == actor_param.shape, print(new_actor_params.shape, actor_param.shape)
             actor_param.data.copy_(new_actor_params)
             
         for critic_param, new_critic_params in zip(self.policy.critic.parameters(), new_critic_params):

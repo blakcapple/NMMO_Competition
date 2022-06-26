@@ -1,4 +1,5 @@
 from ast import Raise
+from matplotlib.pyplot import axis
 import nmmo
 import numpy as np
 from gym import Wrapper, spaces
@@ -27,8 +28,10 @@ class TrainWrapper(Wrapper):
             self.action_space = move_action_space
         elif action_type == 'attack':
             self.action_space = attack_action_space
-        elif action_type == 'both':
+        elif action_type == 'seperate':
             self.action_space = spaces.MultiDiscrete([5, 61])
+        elif action_type == 'both':
+            self.action_space = spaces.Discrete(61*5)
         self.agent_num = 8 # 控制的智能体数量
         self.reward_parser = RewardParser(team_sprit)
         if self.use_pretrained_move_net:
@@ -62,15 +65,18 @@ class TrainWrapper(Wrapper):
             available_actions = move_va
         elif self.action_type == 'attack':
             available_actions = attack_va
-        elif self.action_space == 'both':
+        elif self.action_type == 'seperate':
             available_actions = [move_va, attack_va]
+        elif self.action_type == 'both':
+            move_va_repeat = np.repeat(move_va, 61, axis=1)
+            attack_va_repeat = np.repeat(attack_va[:,np.newaxis,:], 5, axis=1).reshape(8, 305)
+            available_actions = move_va_repeat * attack_va_repeat
         obs['global_obs'].update(time=np.array([0]))
         self.current_attack_index = attack_index
         info = self.reward_parser.max_prev_achv
         return obs, available_actions, info 
 
     def step(self, actions):
-        
         # 得到其他队伍的决策
         decisions = self.get_scripted_team_decision(self._prev_raw_obs)
         # 得到自己队伍的决策
@@ -112,8 +118,12 @@ class TrainWrapper(Wrapper):
             available_actions = move_va
         elif self.action_type == 'attack':
             available_actions = attack_va
-        elif self.action_space == 'both':
+        elif self.action_type == 'seperate':
             available_actions = [move_va, attack_va]
+        elif self.action_type == 'both':
+            move_va_repeat = np.repeat(move_va, 61, axis=1)
+            attack_va_repeat = np.repeat(attack_va[:,np.newaxis,:], 5, axis=1).reshape(8, 305)
+            available_actions = move_va_repeat * attack_va_repeat
         self._prev_raw_obs = raw_obs
         
         if self._step >= self.max_step:
@@ -185,13 +195,16 @@ class TrainWrapper(Wrapper):
         decisions = {}
         move_action = None
         raw_attack_action = None
+        combine_action = None 
         if action_type == 'move':
             move_action = actions 
         elif action_type == 'attack':
             raw_attack_action = actions
-        elif action_type == 'both':
+        elif action_type == 'seperate':
             move_action = actions[:,0]
-            raw_attack_action = actions[:,1]
+            raw_attack_action = actions[:,1] 
+        elif action_type == 'both':
+            combine_action = actions 
         # 预训练的move_policy
         if move_policy is not None:
             move_action = move_policy.get_decision(observations)
@@ -246,6 +259,46 @@ class TrainWrapper(Wrapper):
             for agent_id, d in decisions.items():
                 d.update(attack_decisions[agent_id])
                 decisions[agent_id] = d
+        # combine action 
+        if combine_action is not None:
+            for agent_id, val in enumerate(combine_action):
+                if observations is not None and agent_id not in observations:
+                    continue
+                if val<=60:
+                    decisions[agent_id] = {}
+                
+                elif 61<=val<=304:
+                    decisions[agent_id] = {
+                        nmmo.action.Move: {
+                            nmmo.action.Direction: int(val//61) - 1
+                        }
+                    }
+                else:
+                    raise ValueError(f"invalid action: {val}")
+                a_val = val - (val // 61)*61 
+                if a_val != 0:
+                    if a_val <= 20:
+                        attack_action = {
+                            nmmo.action.Style: 0,
+                            nmmo.action.Target: int(all_target_index[agent_id][a_val - 1])
+                        }
+                    elif a_val <= 40:
+                        attack_action = {
+                            nmmo.action.Style: 1,
+                            nmmo.action.Target: int(all_target_index[agent_id][a_val - 21])
+                        }
+                    elif a_val <= 60:
+                        attack_action = {
+                            nmmo.action.Style: 2,
+                            nmmo.action.Target: int(all_target_index[agent_id][a_val - 41])
+                        }
+                    else:
+                        raise ValueError(f"invalid attack action: {val}")
+                    assert attack_action[nmmo.action.Target] != 0, print(val)
+                    decisions[agent_id].update(                        
+                        {
+                                nmmo.action.Attack: attack_action
+                            })
         return decisions
 
     def close(self):

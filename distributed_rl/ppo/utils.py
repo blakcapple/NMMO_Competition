@@ -76,13 +76,11 @@ class LocalBuffer:
         # self.obs = np.zeros((size + 1, num_agents, *obs_shape), dtype=np.float32)
         local_obs = {
             "agent_vector": np.zeros((size+1, num_agents, 17),dtype=np.float32),
-            "local_map": np.zeros((size+1, num_agents, 17, 15, 15), dtype=np.float32),
-            "attack_vector": np.zeros((size+1, num_agents, 20*12), dtype=np.float32),
+            "local_map": np.zeros((size+1, num_agents, 37, 15, 15), dtype=np.float32),
+            "team_vector": np.zeros((size+1,num_agents, 7*17), dtype=np.float32),
                     } 
         global_obs = {
-            "npc_vector": np.zeros((size+1, 20, 17), dtype=np.float32),
-            "enemy_vector": np.zeros((size+1, 20, 17), dtype=np.float32),
-            "team_vector": np.zeros((size+1, num_agents*17), dtype=np.float32),
+            "global_map": np.zeros((size+1, 11, 128, 128), dtype=np.float32),
             "time": np.zeros((size+1, 1), dtype=np.float32),
                     }
         self.obs = {'local_obs':local_obs, "global_obs":global_obs
