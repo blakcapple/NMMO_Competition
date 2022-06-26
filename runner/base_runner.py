@@ -40,6 +40,7 @@ class Runner(object):
         self.use_wandb = self.all_args.use_wandb
         self.use_render = self.all_args.use_render
         self.recurrent_N = self.all_args.recurrent_N
+        self.warmup_step = self.all_args.warmup_step
 
         # interval
         self.save_interval = self.all_args.save_interval
@@ -121,7 +122,10 @@ class Runner(object):
     def train(self):
         """Train policies with data in buffer. """
         self.trainer.prep_training()
-        train_infos = self.trainer.train(self.buffer)      
+        if self.train_step >= self.warmup_step:
+            train_infos = self.trainer.train(self.buffer, update_actor=True) 
+        else:
+            train_infos = self.trainer.train(self.buffer, update_actor=False)      
         self.buffer.after_update()
         return train_infos
 
@@ -151,9 +155,11 @@ class Runner(object):
         if load_actor:
             policy_actor_state_dict = torch.load(str(model_dir) + '/actor.pt')
             self.policy.actor.load_state_dict(policy_actor_state_dict)
+            print('load actor')
         if load_critic:
             policy_critic_state_dict = torch.load(str(model_dir)+'/critic.pt')
             self.policy.critic.load_state_dict(policy_critic_state_dict)
+            print('load critic')
 
     def log_train(self, train_infos, total_num_steps):
         """

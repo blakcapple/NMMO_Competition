@@ -16,16 +16,19 @@ do
             --experiment_name ${exp} \
             --seed ${seed} \
             --n_training_threads 127 \
-            --n_rollout_threads 8 \
+            --n_rollout_threads 1 \
             --num_mini_batch 1 \
             --episode_length 100 \
             --num_env_steps 10000000 \
             --ppo_epoch 5 \
-            --use_eval \
+            # --use_eval \
             --use_recurrent_policy \
             --n_eval_rollout_threads 1 \
             --eval_episodes 10 \
             --save_interval 10 \
-            --use_wandb
+            --use_wandb \
+            --load_actor \
+            --load_critic \
+            --warmup_step 0
             # --use_value_norm
 done

@@ -16,7 +16,7 @@ class NMMORunner(Runner):
 
     def run(self):
         self.warmup()   
-
+        self.train_step = 0
         start = time.time()
         episodes = int(self.num_env_steps) // self.episode_length // self.n_rollout_threads
         best_reward = 0
@@ -41,6 +41,7 @@ class NMMORunner(Runner):
             # compute return and update network
             self.compute()
             train_infos = self.train()
+            self.train_step += 1
             
             # post process
             total_num_steps = (episode + 1) * self.episode_length * self.n_rollout_threads           

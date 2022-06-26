@@ -1,3 +1,4 @@
+from email.policy import default
 import os
 import sys
 import setproctitle
@@ -16,6 +17,7 @@ import numpy as np
 def parse_args(args, parser):
     parser.add_argument('load_actor', default=False, action='store_true')
     parser.add_argument('load_critic', default=False, action='store_true')
+    parser.add_argument('--warmup_step', default=0, type=int)
     all_args = parser.parse_known_args(args)[0]
     return all_args
 

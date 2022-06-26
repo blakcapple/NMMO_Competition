@@ -1,4 +1,3 @@
-from matplotlib.style import available
 import nmmo
 import numpy as np
 from gym import Wrapper, spaces
@@ -7,9 +6,7 @@ from ijcai2022nmmo.scripted import CombatTeam, ForageTeam, RandomTeam
 from ijcai2022nmmo.scripted.baselines import Scripted
 from ijcai2022nmmo.scripted.scripted_team import ScriptedTeam
 from copy import deepcopy
-
-from wandb import agent
-
+from envs.move import MovePolicy
 
 class FeatureParser:
     map_size = 15
@@ -86,7 +83,8 @@ class RewardParser:
 class TrainWrapper(Wrapper):
     max_step = 1024
     TT_ID = 0  # training team index
-    use_auxiliary_script = False
+    use_auxiliary_script = True
+    use_self_play = True
 
     def __init__(self, env: TeamBasedEnv) -> None:
         super().__init__(env)
@@ -131,7 +129,10 @@ class TrainWrapper(Wrapper):
         self.agents = list(obs.keys())
 
         self.reset_auxiliary_script(self.config)
-        self.reset_scripted_team(self.config)
+        if not self.use_self_play:
+            self.reset_scripted_team(self.config)
+        else:
+            self.reset_rl_team(self.config)
         self._prev_achv = self.metrices_by_team()[self.TT_ID]
         self._prev_raw_obs = raw_obs
         self._step = 0
@@ -145,7 +146,10 @@ class TrainWrapper(Wrapper):
     def step(self, actions):
         
         # 得到其他队伍的决策
-        decisions = self.get_scripted_team_decision(self._prev_raw_obs)
+        if not self.use_self_play:
+            decisions = self.get_scripted_team_decision(self._prev_raw_obs)
+        else:
+            decisions = self.get_rl_team_decision(self._prev_raw_obs)
         # 得到自己队伍的决策
         decisions[self.TT_ID] = self.transform_action(
             actions,
@@ -208,6 +212,23 @@ class TrainWrapper(Wrapper):
             return
         self.auxiliary_script = AttackTeam("auxiliary", config)
 
+    def reset_rl_team(self, config):
+        """
+        重置队伍
+        """
+        if getattr(self, "rl_team", None) is not None:
+            for team in self.rl_team.values():
+                team.reset()
+            return 
+        else:
+            self.rl_team = {}
+            for i in range(15):
+                self.rl_team[i+1] = MovePolicy(config)
+                from pathlib import Path
+                import os 
+                pth = Path(os.path.dirname(__file__)) / 'load_model' / 'actor.pt'
+                self.rl_team[i+1].net.load(pth)
+        
     def reset_scripted_team(self, config):
         """
         重置脚本队伍
@@ -235,6 +256,16 @@ class TrainWrapper(Wrapper):
             if team_id == tt_id:
                 continue
             decisions[team_id] = self._scripted_team[team_id].act(obs)
+        return decisions
+
+    def get_rl_team_decision(self, observations):
+
+        decisions = {}
+        tt_id = self.TT_ID
+        for team_id, obs in observations.items():
+            if team_id == tt_id:
+                continue
+            decisions[team_id] = self.rl_team[team_id].act(obs)
         return decisions
 
     @staticmethod
