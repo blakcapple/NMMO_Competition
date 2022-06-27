@@ -28,6 +28,7 @@ do
             --save_interval 50 \
             --team_spirit 0 \
             --action_type 'both' \
-            --use_wandb 
-            # --load
+            --use_wandb \
+            --warmup_step 100 \
+            --load
 done

@@ -48,6 +48,7 @@ class PPOLearner(Learner):
         self.n_rollout_threads = all_args.n_rollout_threads 
         self.samples_num = 0
         self.save_interval = all_args.save_interval
+        self.warmup_step = all_args.warmup_step
         if self.use_wandb:
             run = wandb.init(config=all_args,
                             project=all_args.env_name,
@@ -158,7 +159,10 @@ class PPOLearner(Learner):
     def train(self):
         """Train policies with data in buffer. """
         self.trainer.prep_training()
-        train_infos = self.trainer.train(self.buffer)      
+        update_actor = False
+        if self.update_step > self.warmup_step:
+            update_actor = True 
+        train_infos = self.trainer.train(self.buffer, update_actor)      
         return train_infos
 
     def run(self):
@@ -202,7 +206,7 @@ class PPOLearner(Learner):
         self.policy.actor.load_state_dict(policy_actor_state_dict)
         policy_critic_state_dict = torch.load(str(self.model_dir)+'/critic.pt')
         self.policy.critic.load_state_dict(policy_critic_state_dict)
-        self.trainer.value_normalizer.load(str(self.model_dir)+'/value_norm.pt')
+        # self.trainer.value_normalizer.load(str(self.model_dir)+'/value_norm.pt')
 
     def log_info(self, data:dict):
         if self.use_wandb:

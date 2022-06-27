@@ -137,7 +137,7 @@ class RewardParser:
             defeat_reward = (achv[i]['PlayerDefeats'] - prev_achv[i]['PlayerDefeats'])/ 1
             forag_reward = (achv[i]['Foraging'] - prev_achv[i]['Foraging'])/ 5
             # reward[i] = alive_reward + explore_reward + equip_reward + forag_reward
-            reward[i] = (sum(achv[i].values()) - sum(prev_achv[i].values()))/100.0
+            reward[i] = (sum(achv[i].values()) - sum(prev_achv[i].values()))/10.0
             # reward[i] = defeat_reward + equip_reward
             # for key in self.keys:
             #     reward[i] += (self.agent_stage[i][key] - self.last_agent_stage[i][key])*10
